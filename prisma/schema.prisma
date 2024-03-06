@@ -20,3 +20,18 @@ model Session {
   accessToken String
   userId      BigInt?
 }
+
+model Review {
+  productId         BigInt
+  reviewId          BigInt
+  reviewerName      String
+  reviewerExternalId BigInt
+  createdAt         DateTime
+  updatedAt         DateTime
+  verified          String
+  rating            Int
+  title             String
+  body              String
+
+  @@id([productId, reviewId])
+}
