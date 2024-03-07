@@ -19,12 +19,21 @@ import {
 import { authenticate } from "../shopify.server";
 import { parseReviewData } from "./metafield_parsers/judge";
 import { getProducts, fetchJudgeReviews } from "./backend/api_calls";
-import { addReviewsToDatabase } from "./backend/prisma/helpers";
+// import { addReviewsToDatabase } from "./backend/prisma/helpers";
+import {
+  connectToSingleStore,
+  createReviewTable,
+  addReviewsToSingleStore,
+} from "./backend/vectordb/helpers";
 import { Review } from "../globals";
 import { log } from "console";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
+
+  console.log("Connecting to SingleStore");
+  await connectToSingleStore();
+  createReviewTable(true);
 
   console.log("Loading products");
   return getProducts(admin);
@@ -41,7 +50,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (apiQuery === "fetchJudgeReviews") {
     return fetchJudgeReviews(productId);
   } else if (apiQuery === "addReviewsToDatabase") {
-    addReviewsToDatabase(Number(productId), JSON.parse(reviews || "[]"));
+    addReviewsToSingleStore(Number(productId), JSON.parse(reviews || "[]"));
     return null;
   }
 };
