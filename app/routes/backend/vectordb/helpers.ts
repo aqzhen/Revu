@@ -16,7 +16,7 @@ export async function connectToSingleStore() {
         ca: fs.readFileSync("./singlestore_bundle.pem"),
       },
     });
-
+    return singleStoreConnection;
     console.log("You have successfully connected to SingleStore.");
   } catch (err) {
     console.error("ERROR", err);
@@ -59,7 +59,28 @@ export async function createReviewTable(deleteExistingReviews: boolean) {
                 PRIMARY KEY (productId, reviewId)
             )
         `);
-    console.log("Review table created successfully.");
+    console.log("Reviews table created successfully.");
+  } catch (err) {
+    console.log("Table already exists");
+  }
+}
+
+export async function createQueriesTable(deleteExistingReviews: boolean) {
+  try {
+    if (deleteExistingReviews) {
+      await singleStoreConnection.execute("DROP TABLE IF EXISTS Queries");
+    }
+    await singleStoreConnection.execute(`
+                CREATE TABLE Queries (
+                    queryId BIGINT,
+                    productId BIGINT,
+                    userId BIGINT,
+                    embedding VECTOR(1536), -- OpenAI embeddings are 1536-dimensional
+                    answer TEXT,
+                    PRIMARY KEY (queryId)
+                )
+            `);
+    console.log("Queries table created successfully.");
   } catch (err) {
     console.log("Table already exists");
   }
@@ -116,6 +137,48 @@ export async function addReviewsToSingleStore(
       console.error("ERROR", err);
       process.exit(1);
     }
+  }
+}
+
+export async function addQueryToSingleStore(
+  queryId: number,
+  productId: number,
+  userId: number,
+  answer: string,
+  query: string,
+): Promise<void> {
+  try {
+    const [results, buff] = await singleStoreConnection.execute(
+      `
+        INSERT INTO Queries (
+            queryId,
+            productId,
+            userId,
+            answer
+        ) VALUES (
+            ${queryId},
+            ${productId},
+            ${userId},
+            '${answer.replace(/'/g, "\\'")}'
+        )
+        `,
+    );
+    // only generate embedding if the review was added (new review)
+    if ((results as any).affectedRows > 0) {
+      const embedding = await generateEmbedding(query);
+      await singleStoreConnection.execute(
+        `
+          UPDATE Queries
+          SET embedding = ?
+          WHERE queryId = ?
+        `,
+        [embedding, queryId],
+      );
+      console.log("Query added successfully.");
+    }
+  } catch (err) {
+    console.error("ERROR", err);
+    process.exit(1);
   }
 }
 

@@ -5,6 +5,7 @@ import {
   useNavigation,
   useSubmit,
   useLoaderData,
+  json,
 } from "@remix-run/react";
 import {
   Page,
@@ -23,17 +24,21 @@ import { getProducts, fetchJudgeReviews } from "./backend/api_calls";
 import {
   connectToSingleStore,
   createReviewTable,
+  createQueriesTable,
   addReviewsToSingleStore,
 } from "./backend/vectordb/helpers";
+import { initialize_agent, call_agent } from "./backend/langchain/agent";
 import { Review } from "../globals";
-import { log } from "console";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   console.log("Connecting to SingleStore");
-  await connectToSingleStore();
-  createReviewTable(true);
+  const db = await connectToSingleStore();
+  createReviewTable(false);
+  createQueriesTable(true);
+
+  await initialize_agent();
 
   console.log("Loading products");
   return getProducts(admin);
@@ -44,6 +49,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   var apiQuery = formData.get("apiQuery") as string;
   var productId = formData.get("productId") as string;
   var reviews = formData.get("reviews") as string;
+  var agentQuery = formData.get("agentQuery") as string;
 
   console.log(productId);
 
@@ -52,6 +58,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   } else if (apiQuery === "addReviewsToDatabase") {
     addReviewsToSingleStore(Number(productId), JSON.parse(reviews || "[]"));
     return null;
+  } else if (apiQuery === "callAgent") {
+    return call_agent(agentQuery);
   }
 };
 
@@ -59,21 +67,26 @@ export default function Index() {
   const [products, setProducts] = useState<any[]>([]);
   var [selectedProduct, setSelectedProduct] = useState<number>();
   var [reviewDetails, setReviewDetails] = useState<Review[]>([]);
+  var [queryString, setQueryString] = useState<string>("");
+  var [queryResponse, setQueryResponse] = useState<undefined>();
 
   // get metafield data
   const nav = useNavigation();
-  const reviewData = useActionData<typeof action>();
+  const actionResponse = useActionData<typeof action>() as any;
   const submit = useSubmit();
   const isLoading =
     ["loading", "submitting"].includes(nav.state) && nav.formMethod === "POST";
 
   // parse the metafield data
   useEffect(() => {
-    if (reviewData && reviewData?.reviews) {
-      var parsedData = parseReviewData(reviewData?.reviews);
+    if (actionResponse && actionResponse?.reviews) {
+      var parsedData = parseReviewData(actionResponse?.reviews);
       setReviewDetails(parsedData);
+    } else if (actionResponse && actionResponse?.result) {
+      console.log(actionResponse?.result);
+      setQueryResponse(actionResponse?.result);
     }
-  }, [reviewData]);
+  }, [actionResponse]);
 
   // trigger action to get reviews
   const getReviews = async (selectedProductId: Number) => {
@@ -143,24 +156,47 @@ export default function Index() {
       <Card>
         <p>Selected Product ID: {selectedProduct}</p>
         {
-          <Button
-            onClick={() =>
-              selectedProduct &&
-              reviewDetails.length != 0 &&
-              pushReviewsToDatabase(selectedProduct, reviewDetails)
-            }
-          >
-            Add Reviews to Database
-          </Button>
+          <>
+            <Button
+              onClick={() =>
+                selectedProduct &&
+                reviewDetails.length != 0 &&
+                pushReviewsToDatabase(selectedProduct, reviewDetails)
+              }
+            >
+              Add Reviews to Database
+            </Button>
+            <input
+              type="text"
+              placeholder="Enter text"
+              onChange={(e) => setQueryString(e.target.value)}
+            />
+            <Button
+              onClick={() =>
+                submit(
+                  { apiQuery: "callAgent", agentQuery: queryString },
+                  { replace: true, method: "POST" },
+                )
+              }
+            >
+              Call Agent
+            </Button>
+          </>
         }
       </Card>
+
+      {queryResponse && (
+        <Card>
+          <p>Agent Response: {queryResponse}</p>
+        </Card>
+      )}
 
       {isLoading ? (
         <Card>
           <Spinner size="small" />
           <p>Loading...</p>
         </Card>
-      ) : reviewData?.reviews ? (
+      ) : actionResponse?.reviews ? (
         <Card>
           <p>Reviews:</p>
           {reviewDetails.map((review, index) => (

@@ -1,3 +1,27 @@
-# This file stores configurations for your Shopify app.
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
+client_id = "a8d41cf7b58fa8f22eed09853a553923"
+name = "Revu"
+application_url = "https://gentle-presentation-outstanding-perform.trycloudflare.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "quickstart-92f03812.myshopify.com"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "write_products"
+
+[auth]
+redirect_urls = [
+  "https://gentle-presentation-outstanding-perform.trycloudflare.com/auth/callback",
+  "https://gentle-presentation-outstanding-perform.trycloudflare.com/auth/shopify/callback",
+  "https://gentle-presentation-outstanding-perform.trycloudflare.com/api/auth/callback"
+]
+
+[webhooks]
+api_version = "2024-01"
+
+[pos]
+embedded = false
