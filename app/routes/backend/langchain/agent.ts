@@ -83,15 +83,33 @@ export async function initialize_agent() {
     const prefix = `
     You are an agent designed to interact with a SQL database.
     Given an input question, create a syntactically correct {dialect} query to run, then look at the results of the query and return the answer.
-    Unless the user specifies a specific number of examples they wish to obtain, always limit your query to at most {top_k} results using the LIMIT clause.
+    If you are asked to describe the database, you should run the query SHOW TABLES
+    Unless the user specifies a specific number of examples they wish to obtain, always limit your query to at most {top_k} results.
+    The question embeddings and answer embeddings are very long, so do not show them unless specifically asked to.
     You can order the results by a relevant column to return the most interesting examples in the database.
-    Never query for all the columns from a specific table, only ask for a the few relevant columns given the question.
-    You have access to tools for interacting with the database.
-    Only use the below tools.
+    Never query for all the columns from a specific table, only ask for the relevant columns given the question.
+    You have access to tools for interacting with the database.\nOnly use the below tools.
     Only use the information returned by the below tools to construct your final answer.
-    You MUST double check your query before executing it. If you get an error while executing a query, rewrite the query and try again.
-
+    You MUST double check your query before executing it. If you get an error while executing a query, rewrite the query and try again up to 3 times.
     DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
+    If the question does not seem related to the database, just return "I don\'t know" as the answer.\n
+    DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
+    DO NOT make any CREATE statements in the database.
+
+    The schema of the table is below:
+    productId: bigInt(20)
+    reviewId: bigInt(20)
+    reviewerName: varchar(255)
+    reviewerExternalId: bigInt(20)
+    createdAt: timestamp
+    updatedAt: timestamp
+    verified: varchar(255)
+    rating: int(11)
+    title: varchar(255)
+    body: text
+    bodyEmbedding: vector(1536, F32)
+
+    The content of the review is in the body column, and the vector embedding of the body is in the bodyEmbedding column.
 
     If the question does not seem related to the database, just return "I don't know" as the answer.`;
 
@@ -122,7 +140,7 @@ export async function initialize_agent() {
       agent: runnableAgent,
       tools,
       returnIntermediateSteps : true,
-      verbose : true
+      verbose : false
     });
   } catch (err) {
     console.error("ERROR", err);
@@ -149,21 +167,20 @@ export async function call_agent(query: string) {
       input: query,
     });
 
-    // result.intermediateSteps.forEach((step: any) => {
-    //   //   if (step.action.tool === "query-sql") {
-    //   //     response.prompt = query;
-    //   //     response.sqlQuery = step.action.toolInput;
-    //   //     response.result = JSON.parse(step.observation);
-    //   //   }
+    result.intermediateSteps.forEach((step: any) => {
+        if (step.action.tool === "query-sql") {
+          response.prompt = query;
+          response.sqlQuery = step.action.toolInput.input;
+          response.result = JSON.parse(step.observation);
+        }
 
-    //   console.log("HIII");
-    //   console.log(
-    //     `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
-    //   );
-    // });
-    console.log(result);
-    // console.log(result.intermediateSteps.stringify);
+      console.log("HIII");
+      console.log(
+        `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
+      );
+    });
     response.output = result.output;
+    console.log(response);
     return json(response);
   } catch (err) {
     console.error("ERROR", err);

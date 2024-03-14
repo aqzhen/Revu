@@ -65,6 +65,7 @@ export default function Index() {
   var [reviewDetails, setReviewDetails] = useState<Review[]>([]);
   var [queryString, setQueryString] = useState<string>("");
   var [queryResponse, setQueryResponse] = useState<undefined>();
+  var [sqlQuery, setSqlQuery] = useState<string>("");
 
   // get metafield data
   const nav = useNavigation();
@@ -81,6 +82,7 @@ export default function Index() {
     } else if (actionResponse && actionResponse?.output) {
       console.log(actionResponse?.output);
       setQueryResponse(actionResponse?.output);
+      setSqlQuery(actionResponse?.sqlQuery);
     }
   }, [actionResponse]);
 
@@ -184,7 +186,9 @@ export default function Index() {
 
       {queryResponse && (
         <Card>
+          <p>Input Query: {queryString}</p>
           <p>Agent Response: {queryResponse}</p>
+          <p>SQL Query Used: {sqlQuery}</p>
         </Card>
       )}
 
