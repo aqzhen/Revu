@@ -1,17 +1,16 @@
-import { createSqlAgent, SqlToolkit } from "langchain/agents/toolkits/sql";
-import { SqlDatabase } from "langchain/sql_db";
-import { DataSource } from "typeorm";
-import fs from "fs";
-import { ChatOpenAI } from "@langchain/openai";
-import { json } from "@remix-run/node";
-import { createOpenAIToolsAgent, AgentExecutor } from "langchain/agents";
-import { AIMessage } from "langchain/schema";
-import { addQueryToSingleStore } from "../vectordb/helpers";
 import {
   ChatPromptTemplate,
   HumanMessagePromptTemplate,
   MessagesPlaceholder,
 } from "@langchain/core/prompts";
+import { ChatOpenAI } from "@langchain/openai";
+import { json } from "@remix-run/node";
+import fs from "fs";
+import { AgentExecutor, createOpenAIToolsAgent } from "langchain/agents";
+import { SqlToolkit } from "langchain/agents/toolkits/sql";
+import { AIMessage } from "langchain/schema";
+import { SqlDatabase } from "langchain/sql_db";
+import { DataSource } from "typeorm";
 
 let executor: AgentExecutor;
 export async function initialize_agent() {
@@ -122,6 +121,8 @@ export async function initialize_agent() {
     executor = new AgentExecutor({
       agent: runnableAgent,
       tools,
+      returnIntermediateSteps : true,
+      verbose : true
     });
   } catch (err) {
     console.error("ERROR", err);
@@ -134,12 +135,13 @@ export async function call_agent(query: string) {
     sqlQuery: "",
     result: [],
     error: "",
+    output: ""
   };
   try {
     // add query to queries table
     // TODO: figure out how to get queryID, productID
-    let queryId = 2;
-    await addQueryToSingleStore(queryId, 1, 1, "TEST ANSWER", query);
+    // let queryId = 2;
+    // await addQueryToSingleStore(queryId, 1, 1, "TEST ANSWER", query);
 
     // TODO: Add semantic caching logic here
 
@@ -147,20 +149,21 @@ export async function call_agent(query: string) {
       input: query,
     });
 
-    result.intermediateSteps.forEach((step: any) => {
-      //   if (step.action.tool === "query-sql") {
-      //     response.prompt = query;
-      //     response.sqlQuery = step.action.toolInput;
-      //     response.result = JSON.parse(step.observation);
-      //   }
+    // result.intermediateSteps.forEach((step: any) => {
+    //   //   if (step.action.tool === "query-sql") {
+    //   //     response.prompt = query;
+    //   //     response.sqlQuery = step.action.toolInput;
+    //   //     response.result = JSON.parse(step.observation);
+    //   //   }
 
-      console.log("HIII");
-      console.log(
-        `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
-      );
-    });
+    //   console.log("HIII");
+    //   console.log(
+    //     `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
+    //   );
+    // });
     console.log(result);
-
+    // console.log(result.intermediateSteps.stringify);
+    response.output = result.output;
     return json(response);
   } catch (err) {
     console.error("ERROR", err);

@@ -1,34 +1,30 @@
-import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import {
   useActionData,
-  useNavigation,
-  useSubmit,
   useLoaderData,
-  json,
+  useNavigation,
+  useSubmit
 } from "@remix-run/react";
 import {
-  Page,
-  Layout,
-  Text,
-  Card,
   Button,
-  BlockStack,
+  Card,
   DataTable,
-  Spinner,
+  Page,
+  Spinner
 } from "@shopify/polaris";
+import { useEffect, useState } from "react";
 import { authenticate } from "../shopify.server";
+import { fetchJudgeReviews, getProducts } from "./backend/api_calls";
 import { parseReviewData } from "./metafield_parsers/judge";
-import { getProducts, fetchJudgeReviews } from "./backend/api_calls";
 // import { addReviewsToDatabase } from "./backend/prisma/helpers";
-import {
-  connectToSingleStore,
-  createReviewTable,
-  createQueriesTable,
-  addReviewsToSingleStore,
-} from "./backend/vectordb/helpers";
-import { initialize_agent, call_agent } from "./backend/langchain/agent";
 import { Review } from "../globals";
+import { call_agent, initialize_agent } from "./backend/langchain/agent";
+import {
+  addReviewsToSingleStore,
+  connectToSingleStore,
+  createQueriesTable,
+  createReviewTable,
+} from "./backend/vectordb/helpers";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -82,9 +78,9 @@ export default function Index() {
     if (actionResponse && actionResponse?.reviews) {
       var parsedData = parseReviewData(actionResponse?.reviews);
       setReviewDetails(parsedData);
-    } else if (actionResponse && actionResponse?.result) {
-      console.log(actionResponse?.result);
-      setQueryResponse(actionResponse?.result);
+    } else if (actionResponse && actionResponse?.output) {
+      console.log(actionResponse?.output);
+      setQueryResponse(actionResponse?.output);
     }
   }, [actionResponse]);
 
@@ -166,6 +162,7 @@ export default function Index() {
             >
               Add Reviews to Database
             </Button>
+            <br /> { /* add new line */ }
             <input
               type="text"
               placeholder="Enter text"
