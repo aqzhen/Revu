@@ -72,12 +72,13 @@ export async function createQueriesTable(deleteExistingReviews: boolean) {
     }
     await singleStoreConnection.execute(`
                 CREATE TABLE Queries (
-                    queryId BIGINT,
+                    queryId BIGINT AUTO_INCREMENT PRIMARY KEY,
                     productId BIGINT,
                     userId BIGINT,
-                    embedding VECTOR(1536), -- OpenAI embeddings are 1536-dimensional
-                    answer TEXT,
-                    PRIMARY KEY (queryId)
+                    query TEXT,
+                    queryEmbedding VECTOR(1536), -- OpenAI embeddings are 1536-dimensional, embedding for entire query
+                    semanticEmbedding VECTOR(1536), -- OpenAI embeddings are 1536-dimensional, semantic embedding is embedding for relevant context of query
+                    answer TEXT
                 )
             `);
     console.log("Queries table created successfully.");
@@ -141,7 +142,6 @@ export async function addReviewsToSingleStore(
 }
 
 export async function addQueryToSingleStore(
-  queryId: number,
   productId: number,
   userId: number,
   answer: string,
@@ -151,12 +151,10 @@ export async function addQueryToSingleStore(
     const [results, buff] = await singleStoreConnection.execute(
       `
         INSERT INTO Queries (
-            queryId,
             productId,
             userId,
             answer
         ) VALUES (
-            ${queryId},
             ${productId},
             ${userId},
             '${answer.replace(/'/g, "\\'")}'
@@ -165,16 +163,35 @@ export async function addQueryToSingleStore(
     );
     // only generate embedding if the review was added (new review)
     if ((results as any).affectedRows > 0) {
-      const embedding = await generateEmbedding(query);
+      // TODO: don't need query embedding for now, but will need for semantic cache
+      // const embedding = await generateEmbedding(query);
+      // await singleStoreConnection.execute(
+      //   `
+      //     UPDATE Queries
+      //     SET embedding = ?
+      //     WHERE queryId = ?
+      //   `,
+      //   [embedding, queryId],
+      // );
+
+      // get semantic context from LLM
+      // const queryContext = OpenAI.
+
+      const queryId = (results as any).insertId;
+
+      // generate embedding and add to db
+      const semanticEmbdding = await generateEmbedding(query);
       await singleStoreConnection.execute(
         `
           UPDATE Queries
-          SET embedding = ?
+          SET semanticEmbedding = ?
           WHERE queryId = ?
         `,
-        [embedding, queryId],
+        [semanticEmbdding, queryId],
       );
+
       console.log("Query added successfully.");
+      return queryId;
     }
   } catch (err) {
     console.error("ERROR", err);

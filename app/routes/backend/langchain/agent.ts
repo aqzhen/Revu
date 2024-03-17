@@ -11,6 +11,7 @@ import { SqlToolkit } from "langchain/agents/toolkits/sql";
 import { AIMessage } from "langchain/schema";
 import { SqlDatabase } from "langchain/sql_db";
 import { DataSource } from "typeorm";
+import { addQueryToSingleStore } from "../vectordb/helpers";
 
 let executor: AgentExecutor;
 export async function initialize_agent() {
@@ -91,27 +92,38 @@ export async function initialize_agent() {
     You have access to tools for interacting with the database.\nOnly use the below tools.
     Only use the information returned by the below tools to construct your final answer.
     You MUST double check your query before executing it. If you get an error while executing a query, rewrite the query and try again up to 3 times.
-    DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
     If the question does not seem related to the database, just return "I don\'t know" as the answer.\n
     DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
     DO NOT make any CREATE statements in the database.
 
-    The schema of the table is below:
-    productId: bigInt(20)
-    reviewId: bigInt(20)
-    reviewerName: varchar(255)
-    reviewerExternalId: bigInt(20)
-    createdAt: timestamp
-    updatedAt: timestamp
-    verified: varchar(255)
-    rating: int(11)
-    title: varchar(255)
-    body: text
-    bodyEmbedding: vector(1536, F32)
 
     The content of the review is in the body column, and the vector embedding of the body is in the bodyEmbedding column.
 
-    If the question does not seem related to the database, just return "I don't know" as the answer.`;
+    If you are asked anything about the content of the review, you should use the DOT_PRODUCT function to calculate the similarity between the semanticEmbedding of the query, which is found in the Queries table, and the bodyEmbedding of the review.
+    Use the DOT_PRODUCT function on the body column as you normally would when using the WHERE...LIKE functionality in SQL. You should NEVER return the review body in the final answer.
+
+    When unsure about what to return, return the reviewID and the similarity score in the final answer by default.
+
+    \n Example 1:
+    Q: QueryId: 1234. What is the number of reviews that describe being beginners at snowboarding?
+    A:
+
+    \nThought: I should use the DOT_PRODUCT function to calculate the similarity between the embedding of the query and the bodyEmbedding of the review. 
+    Then I can return the top most similar reviews in order of their similarity rank.
+
+    \nAction: query-sql
+    \nAction Input:
+    SELECT COUNT(*) AS num_rows,
+        DOT_PRODUCT(review.bodyEmbedding, query.semanticEmbedding) AS similarity_score
+    FROM Review
+    CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS query
+    ORDER BY similarity_score DESC; 
+    LIMIT 5;
+
+    \nObservation: 5
+    \nThought: I now know the final answer
+    \nFinal Answer: 5
+    `;
 
     const suffix = `
     Begin!
@@ -139,8 +151,8 @@ export async function initialize_agent() {
     executor = new AgentExecutor({
       agent: runnableAgent,
       tools,
-      returnIntermediateSteps : true,
-      verbose : false
+      returnIntermediateSteps: true,
+      verbose: false,
     });
   } catch (err) {
     console.error("ERROR", err);
@@ -153,26 +165,25 @@ export async function call_agent(query: string) {
     sqlQuery: "",
     result: [],
     error: "",
-    output: ""
+    output: "",
   };
   try {
     // add query to queries table
     // TODO: figure out how to get queryID, productID
-    // let queryId = 2;
-    // await addQueryToSingleStore(queryId, 1, 1, "TEST ANSWER", query);
+    const queryId = await addQueryToSingleStore(1, 1, "TEST ANSWER", query);
 
     // TODO: Add semantic caching logic here
 
     const result = await executor.invoke({
-      input: query,
+      input: "queryId: " + queryId + " " + query,
     });
 
     result.intermediateSteps.forEach((step: any) => {
-        if (step.action.tool === "query-sql") {
-          response.prompt = query;
-          response.sqlQuery = step.action.toolInput.input;
-          response.result = JSON.parse(step.observation);
-        }
+      if (step.action.tool === "query-sql") {
+        response.prompt = query;
+        response.sqlQuery = step.action.toolInput.input;
+        response.result = step.observation;
+      }
 
       console.log("HIII");
       console.log(
