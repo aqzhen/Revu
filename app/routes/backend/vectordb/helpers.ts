@@ -1,7 +1,8 @@
-import mysql from "mysql2/promise";
-import { Review } from "../../../globals";
 import fs from "fs";
+import mysql from "mysql2/promise";
 import OpenAI from "openai";
+import { Review } from "../../../globals";
+import { chunk_string } from "../langchain/chunking";
 
 let singleStoreConnection: mysql.Connection;
 export async function connectToSingleStore() {
@@ -16,8 +17,8 @@ export async function connectToSingleStore() {
         ca: fs.readFileSync("./singlestore_bundle.pem"),
       },
     });
-    return singleStoreConnection;
     console.log("You have successfully connected to SingleStore.");
+    return singleStoreConnection;
   } catch (err) {
     console.error("ERROR", err);
     process.exit(1);
@@ -61,7 +62,7 @@ export async function createReviewTable(deleteExistingReviews: boolean) {
         `);
     console.log("Reviews table created successfully.");
   } catch (err) {
-    console.log("Table already exists");
+    console.log("Reviews table already exists");
   }
 }
 
@@ -83,8 +84,74 @@ export async function createQueriesTable(deleteExistingReviews: boolean) {
             `);
     console.log("Queries table created successfully.");
   } catch (err) {
-    console.log("Table already exists");
+    console.log("Queries table already exists");
   }
+}
+
+export async function createEmbeddingsTable(deleteExistingReviews: boolean) {
+  try {
+    if (deleteExistingReviews) {
+      await singleStoreConnection.execute("DROP TABLE IF EXISTS Embeddings");
+    }
+    await singleStoreConnection.execute(`
+                CREATE TABLE Embeddings (
+                    reviewId BIGINT,
+                    chunkNumber BIGINT,
+                    body TEXT,
+                    chunkEmbedding VECTOR(1536),
+                    PRIMARY KEY (reviewId, chunkNumber)
+                )
+            `);
+    console.log("Embeddings table created successfully.");
+  } catch (err) {
+    console.log("Embeddings table already exists");
+  }
+}
+
+export async function addChunksToSingleStore(
+  reviews: Review[],
+): Promise<void> {
+  for (const review of reviews) {
+    const chunks = await chunk_string(review.body);
+    let i = 1;
+    for (const chunk of chunks) {
+      try {
+        const [results, buff] = await singleStoreConnection.execute(`
+          INSERT IGNORE INTO Embeddings (
+              reviewId,
+              chunkNumber,
+              body
+          ) VALUES (
+              ${review.reviewId},
+              ${i},
+              '${chunk.replace(/'/g, "\\'")}'
+          )
+      `);
+      
+        // only generate embedding if the review was added (new review)
+        if ((results as any).affectedRows > 0) {
+          const embedding = await generateEmbedding(chunk);
+          // Do something with the embedding
+          await singleStoreConnection.execute(
+            `
+            UPDATE Embeddings
+            SET chunkEmbedding = ?
+            WHERE reviewId = ? AND chunkNumber = ?
+          `,
+            [embedding, review.reviewId, i],
+          );
+          console.log("Chunk added successfully.");
+        }
+        i=i+1;
+      }
+      catch(err) {
+        console.log("Error adding chunks");
+        console.log(err);
+        process.exit(1);
+      }
+    }
+  }
+  console.log("Added chunks for all reviews");
 }
 
 // Add reviews to the SingleStore database, also index review bodies using OpenAI embeddings

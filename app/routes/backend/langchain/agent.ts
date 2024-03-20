@@ -4,17 +4,14 @@ import {
   MessagesPlaceholder,
 } from "@langchain/core/prompts";
 import { ChatOpenAI } from "@langchain/openai";
+import { json } from "@remix-run/node";
 import fs from "fs";
 import { AgentExecutor, createOpenAIToolsAgent } from "langchain/agents";
 import { SqlToolkit } from "langchain/agents/toolkits/sql";
 import { AIMessage } from "langchain/schema";
 import { SqlDatabase } from "langchain/sql_db";
-import { BufferMemory } from "langchain/memory";
 import { DataSource } from "typeorm";
 import { addQueryToSingleStore } from "../vectordb/helpers";
-import { log } from "console";
-import { createLogger } from "vite";
-import { json } from "@remix-run/node";
 
 let executor: AgentExecutor;
 const llm = new ChatOpenAI({
@@ -57,13 +54,25 @@ export async function initialize_agent() {
     DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
     DO NOT make any CREATE statements in the database.
 
-
     The content of the review is in the body column, and the vector embedding of the body is in the bodyEmbedding column.
 
-    If you are asked anything about the content of the review, you should use the DOT_PRODUCT function to calculate the similarity between the semanticEmbedding of the query, which is found in the Queries table, and the bodyEmbedding of the review.
+    If you are asked anything about the content of the review, you should use the DOT_PRODUCT function to calculate the similarity between the semanticEmbedding of the query, which is found in the Queries table, and the embedding of the chunks
+    of the reviews, found in the Embeddings table.
     Use the DOT_PRODUCT function on the body column as you normally would when using the WHERE...LIKE functionality in SQL. You should NEVER return the review body in the final answer.
 
-    Always eturn the reviewID and the similarity score in the final answer by default.
+    You should never use a LIKE clauses when creating a SQL query. Instead, you should always use the DOT_PRODUCT function on the embeddings to determine
+    similarity between the input query and the review body.
+
+    When performing similarity computations, you should use a JOIN on the Embeddings table and compare the semanticEmbedding of the query
+    with all of the chunks found in the Embeddings table. 
+    
+    The reviewId in the Embeddings table is a foreign key which references the reviewId from the Review table.
+    Always return the reviewID, chunkNumber, and body (from Embeddings table) and the similarity score in the final answer by default.
+    The body of the chunk is the 'body' column found in the Embeddings table.
+
+    You should ALWAYS return the chunk body (Embeddings.body) in the output.
+
+    NEVER use a threshold for the similarity score in the output. Just return the top 5 results.
 
     \n Example 1:
     Q: QueryId: 1234. What is the number of reviews that describe being beginners at snowboarding?
@@ -75,8 +84,8 @@ export async function initialize_agent() {
     \nAction: query-sql
     \nAction Input:
     SELECT COUNT(*) AS num_rows,
-        DOT_PRODUCT(Review.bodyEmbedding, Query.semanticEmbedding) AS similarity_score
-    FROM Review
+        DOT_PRODUCT(Query.semanticEmbedding, Emeddings.chunkEmbedding) AS similarity_score
+    FROM Review JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
     CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
     ORDER BY similarity_score DESC; 
     LIMIT 5;

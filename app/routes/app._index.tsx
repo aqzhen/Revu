@@ -19,11 +19,14 @@ import { parseReviewData } from "./metafield_parsers/judge";
 // import { addReviewsToDatabase } from "./backend/prisma/helpers";
 import { Review } from "../globals";
 import { call_agent, initialize_agent } from "./backend/langchain/agent";
+import { chunk_string } from "./backend/langchain/chunking";
 import {
+  addChunksToSingleStore,
   addReviewsToSingleStore,
   connectToSingleStore,
+  createEmbeddingsTable,
   createQueriesTable,
-  createReviewTable,
+  createReviewTable
 } from "./backend/vectordb/helpers";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -33,6 +36,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const db = await connectToSingleStore();
   createReviewTable(false);
   createQueriesTable(true);
+  createEmbeddingsTable(false);
 
   await initialize_agent();
 
@@ -46,6 +50,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   var productId = formData.get("productId") as string;
   var reviews = formData.get("reviews") as string;
   var agentQuery = formData.get("agentQuery") as string;
+  var chunkString = formData.get("chunkString") as string;
+  
 
   console.log(productId);
 
@@ -53,9 +59,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return fetchJudgeReviews(productId);
   } else if (apiQuery === "addReviewsToDatabase") {
     addReviewsToSingleStore(Number(productId), JSON.parse(reviews || "[]"));
+    console.log("About to try to add chunks");
+    addChunksToSingleStore(JSON.parse(reviews || "[]"));
     return null;
   } else if (apiQuery === "callAgent") {
     return call_agent(agentQuery);
+  } else if (apiQuery === "chunkString") {
+    return chunk_string(chunkString);
   }
 };
 
@@ -66,6 +76,7 @@ export default function Index() {
   var [queryString, setQueryString] = useState<string>("");
   var [queryResponse, setQueryResponse] = useState<undefined>();
   var [sqlQuery, setSqlQuery] = useState<string>("");
+  var [chunkString, setChunkString] = useState<string>("");
 
   // get metafield data
   const nav = useNavigation();
@@ -182,6 +193,23 @@ export default function Index() {
             </Button>
           </>
         }
+      </Card>
+
+      <Card>
+        <input
+          type="text"
+          placeholder="chunk string"
+          onChange={(e) => setChunkString(e.target.value)}
+        />
+        <Button
+          onClick={() =>
+            submit(
+              { apiQuery: "chunkString", chunkString: chunkString },
+              { replace: true, method: "POST" },
+            )}  
+        >
+          Test Chunk String
+        </Button>
       </Card>
 
       {queryResponse && (
