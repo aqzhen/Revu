@@ -214,9 +214,11 @@ export default function Index() {
 
       {queryResponse && (
         <Card>
-          <p>Input Query: {queryString}</p>
-          <p>Agent Response: {queryResponse}</p>
-          <p>SQL Query Used: {sqlQuery}</p>
+          <p><strong>Input Query:</strong> {queryString}</p>
+          <br /> { /* add new line */ }
+          <p><strong>Agent Response:</strong> {queryResponse}</p>
+          <br /> { /* add new line */ }
+          <p><strong>SQL Query Used:</strong> {sqlQuery}</p>
         </Card>
       )}
 

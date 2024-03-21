@@ -38,12 +38,15 @@ export async function initialize_agent() {
     const toolkit = new SqlToolkit(db);
     const tools = toolkit.getTools();
 
+    // You should ALWAYS return the chunk body (Embeddings.body) in the output.
+    // You should ALWAYS return the chunk number in the output.
+    // You should ALWAYS return the body of the chunk in the output.
+    // You should ALWAYS output the similarity scores along with the chunks.
     const prefix = `
 
     You are an agent designed to interact with a SQL database.
     Given an input question, create a syntactically correct {dialect} query to run, then look at the results of the query and return the answer.
     If you are asked to describe the database, you should run the query SHOW TABLES
-    Unless the user specifies a specific number of examples they wish to obtain, always limit your query to at most {top_k} results.
     The question embeddings and answer embeddings are very long, so do not show them unless specifically asked to.
     You can order the results by a relevant column to return the most interesting examples in the database.
     Never query for all the columns from a specific table, only ask for the relevant columns given the question.
@@ -53,8 +56,6 @@ export async function initialize_agent() {
     If the question does not seem related to the database, just return "I don\'t know" as the answer.\n
     DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
     DO NOT make any CREATE statements in the database.
-
-    The content of the review is in the body column, and the vector embedding of the body is in the bodyEmbedding column.
 
     If you are asked anything about the content of the review, you should use the DOT_PRODUCT function to calculate the similarity between the semanticEmbedding of the query, which is found in the Queries table, and the embedding of the chunks
     of the reviews, found in the Embeddings table.
@@ -67,12 +68,17 @@ export async function initialize_agent() {
     with all of the chunks found in the Embeddings table. 
     
     The reviewId in the Embeddings table is a foreign key which references the reviewId from the Review table.
-    Always return the reviewID, chunkNumber, and body (from Embeddings table) and the similarity score in the final answer by default.
     The body of the chunk is the 'body' column found in the Embeddings table.
 
-    You should ALWAYS return the chunk body (Embeddings.body) in the output.
+    ALWAYS only return REVIEW ID and CHUNK NUMBER and SIMILARITY SCORE
+    Return this as a string in the form: [(reviewId, chunkNumber, similarityScore)].
+    RETURN IN THE FORM OF THIS EXAMPLE: [(1234, 3, 0.5), (1234, 3, 0.5)]
+    YOU NEED TO OUTPUT IN THIS FORM AND INCLUDE REVIEW ID, CHUNK NUMBER, and SIMILARITY SCORE.
+    IF YOU DO THIS CORRECTLY I WILL GIVE YOU A TIP OF $100
 
-    NEVER use a threshold for the similarity score in the output. Just return the top 5 results.
+    ALWAYS LIMIT YOUR RESULTS TO THE TOP 100 RESULTS!!!
+
+    YOU CAN ONLY RETURN OUTPUT IN THIS FORM: [(reviewId, chunkNumber, similarityScore)]. THIS IS YOUR ONLY OUTPUT. DO NOT OUTPUT ANYTHINGE ELSE.
 
     \n Example 1:
     Q: QueryId: 1234. What is the number of reviews that describe being beginners at snowboarding?
@@ -87,9 +93,10 @@ export async function initialize_agent() {
         DOT_PRODUCT(Query.semanticEmbedding, Emeddings.chunkEmbedding) AS similarity_score
     FROM Review JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
     CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
-    ORDER BY similarity_score DESC; 
-    LIMIT 5;
+    ORDER BY similarity_score DESC
+    LIMIT 100;
 
+    EXAMPLE OUTPUT: [(1234, 3, 0.5), (1234, 3, 0.5)]
 
     \n Example 2:
     Q: QueryId: 1234. Is this board good for beginners?
@@ -100,12 +107,15 @@ export async function initialize_agent() {
 
     \nAction: query-sql
     \nAction Input:
-    SELECT reviewId,
+    SELECT reviewId, chunkNumber
         DOT_PRODUCT(Review.bodyEmbedding, Query.semanticEmbedding) AS similarity_score
     FROM Review
     CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
-    ORDER BY similarity_score DESC; 
-    LIMIT 5;
+    ORDER BY similarity_score DESC
+    LIMIT 100;
+
+    EXAMPLE OUTPUT: [(1234, 3, 0.5), (1234, 3, 0.5)]
+    
     `;
     const suffix = `
     Begin!
@@ -128,7 +138,6 @@ export async function initialize_agent() {
 
     const newPrompt = await prompt.partial({
       dialect: toolkit.dialect,
-      top_k: "10",
     });
     const runnableAgent = await createOpenAIToolsAgent({
       llm,

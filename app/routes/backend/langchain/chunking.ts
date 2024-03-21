@@ -7,8 +7,6 @@ export async function chunk_string(chunkString : string) {
         chunkOverlap: 20
     });
     const chunks = await splitter.createDocuments([chunkString])
-    console.log(chunks);
     const res = chunks.map(item => item.pageContent);
-    console.log(res)
     return res;
 }
