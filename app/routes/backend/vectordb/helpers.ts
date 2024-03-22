@@ -3,6 +3,7 @@ import mysql from "mysql2/promise";
 import OpenAI from "openai";
 import { Review } from "../../../globals";
 import { chunk_string } from "../langchain/chunking";
+import { log } from "console";
 
 let singleStoreConnection: mysql.Connection;
 export async function connectToSingleStore() {
@@ -56,7 +57,6 @@ export async function createReviewTable(deleteExistingReviews: boolean) {
                 rating INT,
                 title VARCHAR(255),
                 body TEXT,
-                bodyEmbedding VECTOR(1536), -- OpenAI embeddings are 1536-dimensional
                 PRIMARY KEY (productId, reviewId)
             )
         `);
@@ -78,7 +78,7 @@ export async function createQueriesTable(deleteExistingReviews: boolean) {
                     userId BIGINT,
                     query TEXT,
                     queryEmbedding VECTOR(1536), -- OpenAI embeddings are 1536-dimensional, embedding for entire query
-                    semanticEmbedding VECTOR(1536), -- OpenAI embeddings are 1536-dimensional, semantic embedding is embedding for relevant context of query
+                    semanticEmbedding VECTOR(768), -- OpenAI embeddings are 1536-dimensional, semantic embedding is embedding for relevant context of query
                     answer TEXT
                 )
             `);
@@ -91,6 +91,8 @@ export async function createQueriesTable(deleteExistingReviews: boolean) {
 export async function createEmbeddingsTable(deleteExistingReviews: boolean) {
   try {
     if (deleteExistingReviews) {
+      console.log("Dropping embedding table");
+
       await singleStoreConnection.execute("DROP TABLE IF EXISTS Embeddings");
     }
     await singleStoreConnection.execute(`
@@ -98,7 +100,7 @@ export async function createEmbeddingsTable(deleteExistingReviews: boolean) {
                     reviewId BIGINT,
                     chunkNumber BIGINT,
                     body TEXT,
-                    chunkEmbedding VECTOR(1536),
+                    chunkEmbedding VECTOR(768),
                     PRIMARY KEY (reviewId, chunkNumber)
                 )
             `);
@@ -108,9 +110,7 @@ export async function createEmbeddingsTable(deleteExistingReviews: boolean) {
   }
 }
 
-export async function addChunksToSingleStore(
-  reviews: Review[],
-): Promise<void> {
+export async function addChunksToSingleStore(reviews: Review[]): Promise<void> {
   for (const review of reviews) {
     const chunks = await chunk_string(review.body);
     let i = 1;
@@ -127,7 +127,7 @@ export async function addChunksToSingleStore(
               '${chunk.replace(/'/g, "\\'")}'
           )
       `);
-      
+
         // only generate embedding if the review was added (new review)
         if ((results as any).affectedRows > 0) {
           const embedding = await generateEmbedding(chunk);
@@ -142,9 +142,8 @@ export async function addChunksToSingleStore(
           );
           console.log("Chunk added successfully.");
         }
-        i=i+1;
-      }
-      catch(err) {
+        i = i + 1;
+      } catch (err) {
         console.log("Error adding chunks");
         console.log(err);
         process.exit(1);
@@ -186,21 +185,6 @@ export async function addReviewsToSingleStore(
             '${review.body.replace(/'/g, "\\'")}'
         )
     `);
-
-      // only generate embedding if the review was added (new review)
-      if ((results as any).affectedRows > 0) {
-        const embedding = await generateEmbedding(review.body);
-        // Do something with the embedding
-        await singleStoreConnection.execute(
-          `
-          UPDATE Review
-          SET bodyEmbedding = ?
-          WHERE productId = ? AND reviewId = ?
-        `,
-          [embedding, productId, review.reviewId],
-        );
-        console.log("Review added successfully.");
-      }
     } catch (err) {
       console.error("ERROR", err);
       process.exit(1);
@@ -274,6 +258,7 @@ async function generateEmbedding(body: string) {
     await client.embeddings.create({
       input: [body],
       model: "text-embedding-3-small",
+      dimensions: 768,
     })
   ).data[0].embedding;
   return JSON.stringify(embedding);

@@ -90,13 +90,12 @@ export async function initialize_agent() {
     \nAction: query-sql
     \nAction Input:
     SELECT COUNT(*) AS num_rows,
-        DOT_PRODUCT(Query.semanticEmbedding, Emeddings.chunkEmbedding) AS similarity_score
+        DOT_PRODUCT(Query.semanticEmbedding, Embeddings.chunkEmbedding) AS similarity_score
     FROM Review JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
     CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
     ORDER BY similarity_score DESC
     LIMIT 100;
 
-    EXAMPLE OUTPUT: [(1234, 3, 0.5), (1234, 3, 0.5)]
 
     \n Example 2:
     Q: QueryId: 1234. Is this board good for beginners?
@@ -108,13 +107,11 @@ export async function initialize_agent() {
     \nAction: query-sql
     \nAction Input:
     SELECT reviewId, chunkNumber
-        DOT_PRODUCT(Review.bodyEmbedding, Query.semanticEmbedding) AS similarity_score
+        DOT_PRODUCT(Embeddings.chunkEmbedding, Query.semanticEmbedding) AS similarity_score
     FROM Review
     CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
     ORDER BY similarity_score DESC
     LIMIT 100;
-
-    EXAMPLE OUTPUT: [(1234, 3, 0.5), (1234, 3, 0.5)]
     
     `;
     const suffix = `
@@ -189,27 +186,37 @@ export async function call_agent(query: string) {
     // if results has reviewIds and similarity_score, then we perform query to grab bodies and feed into LLM
     let llmOutput;
     const resultObject = JSON.parse(response.result as unknown as string);
+    console.log(resultObject);
     if (resultObject.length > 0 && (resultObject[0] as any).reviewId) {
-      // get reviewIds
-      const reviewIds = resultObject.map((r: any) => r.reviewId);
+      // get unique reviewIds of (reviewId, chunkNumber) pairs that have similarity score > 0.5
+      const reviewIds = Array.from(
+        new Set(
+          resultObject
+            .filter((r: any) => r.similarity_score >= 0.5)
+            .map((r: any) => r.reviewId),
+        ),
+      );
+      const reviewIdsString = reviewIds.join(",");
       // get review bodies
       const reviewBodies = await db.run(
-        `SELECT reviewId, body FROM Review WHERE reviewId IN (${reviewIds.join(
-          ",",
-        )})`,
+        `SELECT reviewId, body FROM Review WHERE reviewId IN (${reviewIdsString})`,
       );
+
+      console.log(reviewBodies);
 
       llmOutput = (
         await llm.invoke(
-          "Using the following reviews, answer this query: " +
+          "Using the following reviews, answer this query, referencing the reviewID where you get your evidence from: " +
             query +
             "\n" +
             reviewBodies,
         )
       ).content;
+
+      // llmOutput = "LLM output";
     }
 
-    response.output = llmOutput + "\n" + result.output;
+    response.output = llmOutput as string;
     console.log(response.output);
     return json(response);
   } catch (err) {

@@ -3,15 +3,9 @@ import {
   useActionData,
   useLoaderData,
   useNavigation,
-  useSubmit
+  useSubmit,
 } from "@remix-run/react";
-import {
-  Button,
-  Card,
-  DataTable,
-  Page,
-  Spinner
-} from "@shopify/polaris";
+import { Button, Card, DataTable, Page, Spinner } from "@shopify/polaris";
 import { useEffect, useState } from "react";
 import { authenticate } from "../shopify.server";
 import { fetchJudgeReviews, getProducts } from "./backend/api_calls";
@@ -26,7 +20,7 @@ import {
   connectToSingleStore,
   createEmbeddingsTable,
   createQueriesTable,
-  createReviewTable
+  createReviewTable,
 } from "./backend/vectordb/helpers";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -51,7 +45,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   var reviews = formData.get("reviews") as string;
   var agentQuery = formData.get("agentQuery") as string;
   var chunkString = formData.get("chunkString") as string;
-  
 
   console.log(productId);
 
@@ -74,7 +67,7 @@ export default function Index() {
   var [selectedProduct, setSelectedProduct] = useState<number>();
   var [reviewDetails, setReviewDetails] = useState<Review[]>([]);
   var [queryString, setQueryString] = useState<string>("");
-  var [queryResponse, setQueryResponse] = useState<undefined>();
+  var [queryResponse, setQueryResponse] = useState<string>();
   var [sqlQuery, setSqlQuery] = useState<string>("");
   var [chunkString, setChunkString] = useState<string>("");
 
@@ -92,7 +85,7 @@ export default function Index() {
       setReviewDetails(parsedData);
     } else if (actionResponse && actionResponse?.output) {
       console.log(actionResponse?.output);
-      setQueryResponse(actionResponse?.output);
+      setQueryResponse(actionResponse?.output + "\n" + actionResponse?.result);
       setSqlQuery(actionResponse?.sqlQuery);
     }
   }, [actionResponse]);
@@ -175,7 +168,7 @@ export default function Index() {
             >
               Add Reviews to Database
             </Button>
-            <br /> { /* add new line */ }
+            <br /> {/* add new line */}
             <input
               type="text"
               placeholder="Enter text"
@@ -206,7 +199,8 @@ export default function Index() {
             submit(
               { apiQuery: "chunkString", chunkString: chunkString },
               { replace: true, method: "POST" },
-            )}  
+            )
+          }
         >
           Test Chunk String
         </Button>
@@ -214,11 +208,17 @@ export default function Index() {
 
       {queryResponse && (
         <Card>
-          <p><strong>Input Query:</strong> {queryString}</p>
-          <br /> { /* add new line */ }
-          <p><strong>Agent Response:</strong> {queryResponse}</p>
-          <br /> { /* add new line */ }
-          <p><strong>SQL Query Used:</strong> {sqlQuery}</p>
+          <p>
+            <strong>Input Query:</strong> {queryString}
+          </p>
+          <br /> {/* add new line */}
+          <p>
+            <strong>Agent Response:</strong> {queryResponse}
+          </p>
+          <br /> {/* add new line */}
+          <p>
+            <strong>SQL Query Used:</strong> {sqlQuery}
+          </p>
         </Card>
       )}
 
