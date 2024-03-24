@@ -1,9 +1,9 @@
 import fs from "fs";
-import mysql from "mysql2/promise";
+import mysql, { RowDataPacket } from "mysql2/promise";
 import OpenAI from "openai";
 import { Review } from "../../../globals";
 import { chunk_string } from "../langchain/chunking";
-import { log } from "console";
+import { json } from "@remix-run/node";
 
 let singleStoreConnection: mysql.Connection;
 export async function connectToSingleStore() {
@@ -40,6 +40,7 @@ export async function disconnectFromSingleStore() {
   }
 }
 
+// Create Tables
 export async function createReviewTable(deleteExistingReviews: boolean) {
   try {
     if (deleteExistingReviews) {
@@ -47,8 +48,8 @@ export async function createReviewTable(deleteExistingReviews: boolean) {
     }
     await singleStoreConnection.execute(`
             CREATE TABLE Review (
+                reviewId BIGINT PRIMARY KEY,
                 productId BIGINT,
-                reviewId BIGINT,
                 reviewerName VARCHAR(255),
                 reviewerExternalId BIGINT,
                 createdAt TIMESTAMP,
@@ -56,8 +57,7 @@ export async function createReviewTable(deleteExistingReviews: boolean) {
                 verified VARCHAR(255),
                 rating INT,
                 title VARCHAR(255),
-                body TEXT,
-                PRIMARY KEY (productId, reviewId)
+                body TEXT
             )
         `);
     console.log("Reviews table created successfully.");
@@ -110,6 +110,7 @@ export async function createEmbeddingsTable(deleteExistingReviews: boolean) {
   }
 }
 
+// Adders
 export async function addChunksToSingleStore(reviews: Review[]): Promise<void> {
   for (const review of reviews) {
     const chunks = await chunk_string(review.body);
@@ -162,8 +163,8 @@ export async function addReviewsToSingleStore(
     try {
       const [results, buff] = await singleStoreConnection.execute(`
         INSERT IGNORE INTO Review (
-            productId,
             reviewId,
+            productId,
             reviewerName,
             reviewerExternalId,
             createdAt,
@@ -173,8 +174,8 @@ export async function addReviewsToSingleStore(
             title,
             body
         ) VALUES (
-            ${productId},
             ${review.reviewId},
+            ${productId},
             '${review.reviewerName.replace(/'/g, "\\'")}',
             ${review.reviewerExternalId},
             '${review.createdAt}',
@@ -244,6 +245,34 @@ export async function addQueryToSingleStore(
       console.log("Query added successfully.");
       return queryId;
     }
+  } catch (err) {
+    console.error("ERROR", err);
+    process.exit(1);
+  }
+}
+
+// Getters
+export async function getReviewChunks(
+  reviewIDs: number[],
+  chunkNumbers: number[],
+): Promise<{ bodies: string[] }> {
+  try {
+    console.log("Getting review chunks", reviewIDs, chunkNumbers);
+    const bodies: string[] = [];
+    for (let i = 0; i < reviewIDs.length; i++) {
+      const reviewID = reviewIDs[i];
+      const chunkNumber = chunkNumbers[i];
+      const [results, buff] = await singleStoreConnection.execute(
+        `
+          SELECT body FROM Embeddings WHERE reviewId = ? AND chunkNumber = ?
+        `,
+        [reviewID, chunkNumber],
+      );
+      const body = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
+        ?.body;
+      bodies.push(body);
+    }
+    return { bodies };
   } catch (err) {
     console.error("ERROR", err);
     process.exit(1);

@@ -5,7 +5,15 @@ import {
   useNavigation,
   useSubmit,
 } from "@remix-run/react";
-import { Button, Card, DataTable, Page, Spinner } from "@shopify/polaris";
+import {
+  Box,
+  Button,
+  Card,
+  DataTable,
+  BlockStack,
+  Page,
+  Spinner,
+} from "@shopify/polaris";
 import { useEffect, useState } from "react";
 import { authenticate } from "../shopify.server";
 import { fetchJudgeReviews, getProducts } from "./backend/api_calls";
@@ -17,6 +25,7 @@ import { chunk_string } from "./backend/langchain/chunking";
 import {
   addChunksToSingleStore,
   addReviewsToSingleStore,
+  getReviewChunks,
   connectToSingleStore,
   createEmbeddingsTable,
   createQueriesTable,
@@ -29,7 +38,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   console.log("Connecting to SingleStore");
   const db = await connectToSingleStore();
   createReviewTable(false);
-  createQueriesTable(true);
+  createQueriesTable(false);
   createEmbeddingsTable(false);
 
   await initialize_agent();
@@ -45,6 +54,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   var reviews = formData.get("reviews") as string;
   var agentQuery = formData.get("agentQuery") as string;
   var chunkString = formData.get("chunkString") as string;
+  var reviewIds = formData.get("reviewIds") as string;
+  var chunkNumbers = formData.get("chunkNumbers") as string;
 
   console.log(productId);
 
@@ -59,39 +70,61 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return call_agent(agentQuery);
   } else if (apiQuery === "chunkString") {
     return chunk_string(chunkString);
+  } else if (apiQuery === "getReviewChunks") {
+    let get = await getReviewChunks(
+      JSON.parse(reviewIds),
+      JSON.parse(chunkNumbers),
+    );
+    console.log(get);
+    return get;
   }
 };
 
 export default function Index() {
   const [products, setProducts] = useState<any[]>([]);
   var [selectedProduct, setSelectedProduct] = useState<number>();
-  var [reviewDetails, setReviewDetails] = useState<Review[]>([]);
+  var [reviewListDetails, setReviewListDetails] = useState<Review[]>([]); // used to store the entire list of reviews for a product
+  var [chunkBodies, setChunkBodies] = useState<string[]>([]); // used to store the list of reviews returend on a query
   var [queryString, setQueryString] = useState<string>("");
-  var [queryResponse, setQueryResponse] = useState<string>();
+  var [queryResponse, setQueryResponse] = useState<string>(); // this is the LLM output text answer
+  var [queryResult, setQueryResult] = useState<string>(); // this is the sql query result (resultIds, etc..)
   var [sqlQuery, setSqlQuery] = useState<string>("");
-  var [chunkString, setChunkString] = useState<string>("");
 
-  // get metafield data
   const nav = useNavigation();
   const actionResponse = useActionData<typeof action>() as any;
   const submit = useSubmit();
   const isLoading =
     ["loading", "submitting"].includes(nav.state) && nav.formMethod === "POST";
 
-  // parse the metafield data
+  // calling api to get reviews for returned reviews/chunks after a query
+  const reviewIds: number[] = [];
+  const chunkNumbers: number[] = [];
+  useEffect(() => {
+    if (queryResult) {
+      JSON.parse(queryResult as string).forEach((obj: any) => {
+        reviewIds.push(obj.reviewId);
+        chunkNumbers.push(obj.chunkNumber);
+      });
+      getReviewsForQuery(reviewIds, chunkNumbers);
+    }
+  }, [queryResult]);
+
   useEffect(() => {
     if (actionResponse && actionResponse?.reviews) {
       var parsedData = parseReviewData(actionResponse?.reviews);
-      setReviewDetails(parsedData);
+      setReviewListDetails(parsedData);
     } else if (actionResponse && actionResponse?.output) {
       console.log(actionResponse?.output);
-      setQueryResponse(actionResponse?.output + "\n" + actionResponse?.result);
+      setQueryResponse(actionResponse?.output);
+      setQueryResult(actionResponse?.result);
       setSqlQuery(actionResponse?.sqlQuery);
+    } else if (actionResponse && actionResponse?.bodies) {
+      setChunkBodies(actionResponse?.bodies);
     }
   }, [actionResponse]);
 
   // trigger action to get reviews
-  const getReviews = async (selectedProductId: Number) => {
+  const initializeReviews = async (selectedProductId: Number) => {
     await submit(
       { apiQuery: "fetchJudgeReviews", productId: Number(selectedProductId) },
       { replace: true, method: "POST" },
@@ -107,6 +140,20 @@ export default function Index() {
         apiQuery: "addReviewsToDatabase",
         productId: productId,
         reviews: JSON.stringify(reviews),
+      },
+      { replace: true, method: "POST" },
+    );
+  };
+
+  const getReviewsForQuery = async (
+    reviewIds: number[],
+    chunkNumbers: number[],
+  ) => {
+    await submit(
+      {
+        apiQuery: "getReviewChunks",
+        reviewIds: JSON.stringify(reviewIds),
+        chunkNumbers: JSON.stringify(chunkNumbers),
       },
       { replace: true, method: "POST" },
     );
@@ -132,7 +179,7 @@ export default function Index() {
   const handleProductSelection = async (productId: string) => {
     var trimmed_id = productId.replace("gid://shopify/Product/", "");
     setSelectedProduct(Number(trimmed_id));
-    getReviews(Number(trimmed_id));
+    initializeReviews(Number(trimmed_id));
   };
 
   return (
@@ -162,33 +209,35 @@ export default function Index() {
             <Button
               onClick={() =>
                 selectedProduct &&
-                reviewDetails.length != 0 &&
-                pushReviewsToDatabase(selectedProduct, reviewDetails)
+                reviewListDetails.length != 0 &&
+                pushReviewsToDatabase(selectedProduct, reviewListDetails)
               }
             >
               Add Reviews to Database
-            </Button>
-            <br /> {/* add new line */}
-            <input
-              type="text"
-              placeholder="Enter text"
-              onChange={(e) => setQueryString(e.target.value)}
-            />
-            <Button
-              onClick={() =>
-                submit(
-                  { apiQuery: "callAgent", agentQuery: queryString },
-                  { replace: true, method: "POST" },
-                )
-              }
-            >
-              Call Agent
             </Button>
           </>
         }
       </Card>
 
       <Card>
+        <input
+          type="text"
+          placeholder="Enter text"
+          onChange={(e) => setQueryString(e.target.value)}
+        />
+        <Button
+          onClick={() =>
+            submit(
+              { apiQuery: "callAgent", agentQuery: queryString },
+              { replace: true, method: "POST" },
+            )
+          }
+        >
+          Query Reviews
+        </Button>
+      </Card>
+
+      {/* <Card>
         <input
           type="text"
           placeholder="chunk string"
@@ -204,22 +253,42 @@ export default function Index() {
         >
           Test Chunk String
         </Button>
-      </Card>
+      </Card> */}
 
       {queryResponse && (
-        <Card>
-          <p>
-            <strong>Input Query:</strong> {queryString}
-          </p>
-          <br /> {/* add new line */}
-          <p>
-            <strong>Agent Response:</strong> {queryResponse}
-          </p>
-          <br /> {/* add new line */}
-          <p>
-            <strong>SQL Query Used:</strong> {sqlQuery}
-          </p>
-        </Card>
+        <>
+          <Card>
+            <p>
+              <strong>Input Query:</strong> {queryString}
+            </p>
+          </Card>
+          <Card>
+            <p>
+              <strong>Agent Response:</strong>
+            </p>
+            {queryResponse && <p>{queryResponse}</p>}
+            <br /> {/* add new line */}
+            <BlockStack>
+              {queryResult &&
+                JSON.parse(queryResult).map((obj: any, index: number) => (
+                  <Card key={index}>
+                    {obj.similarity_score > 0.5 ? (
+                      <strong>{JSON.stringify(obj)}</strong>
+                    ) : (
+                      JSON.stringify(obj)
+                    )}
+
+                    {chunkBodies && <p>{chunkBodies[index]}</p>}
+                  </Card>
+                ))}
+            </BlockStack>
+          </Card>
+          <Card>
+            <p>
+              <strong>SQL Query Used:</strong> {sqlQuery}
+            </p>
+          </Card>
+        </>
       )}
 
       {isLoading ? (
@@ -230,7 +299,7 @@ export default function Index() {
       ) : actionResponse?.reviews ? (
         <Card>
           <p>Reviews:</p>
-          {reviewDetails.map((review, index) => (
+          {reviewListDetails.map((review, index) => (
             <Card key={index}>
               <p>Reviewer Name: {review.reviewerName}</p>
               <p>Reviewer External ID: {review.reviewerExternalId}</p>

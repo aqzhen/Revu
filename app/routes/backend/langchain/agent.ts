@@ -76,7 +76,7 @@ export async function initialize_agent() {
     YOU NEED TO OUTPUT IN THIS FORM AND INCLUDE REVIEW ID, CHUNK NUMBER, and SIMILARITY SCORE.
     IF YOU DO THIS CORRECTLY I WILL GIVE YOU A TIP OF $100
 
-    ALWAYS LIMIT YOUR RESULTS TO THE TOP 100 RESULTS!!!
+    ALWAYS LIMIT YOUR RESULTS TO THE TOP 25 RESULTS!!!
 
     YOU CAN ONLY RETURN OUTPUT IN THIS FORM: [(reviewId, chunkNumber, similarityScore)]. THIS IS YOUR ONLY OUTPUT. DO NOT OUTPUT ANYTHINGE ELSE.
 
@@ -94,7 +94,7 @@ export async function initialize_agent() {
     FROM Review JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
     CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
     ORDER BY similarity_score DESC
-    LIMIT 100;
+    LIMIT 25;
 
 
     \n Example 2:
@@ -111,7 +111,29 @@ export async function initialize_agent() {
     FROM Review
     CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
     ORDER BY similarity_score DESC
-    LIMIT 100;
+    LIMIT 25;
+
+    \n Example 3:
+    Q: QueryId: 1234. Of the five star reviews, in which do the reviewers identify as beginner snowboarders?
+
+    \nThought: I will create a SQL query to find the reviewIds of reviewers who identify as beginner snowboarders.\n\nI will use the DOT_PRODUCT function to 
+    calculate the similarity between the embedding of the query and the bodyEmbedding of the review. Then, I will filter for five-star reviews and 
+    those that mention they are beginner snowboarders, and return the reviewId of such reviews.
+
+    \nAction: query-sql
+    \nAction Input:
+    SELECT num_rows, similarity_score
+    FROM (
+        SELECT COUNT(*) AS num_rows,
+               DOT_PRODUCT(Query.semanticEmbedding, Embeddings.chunkEmbedding) AS similarity_score
+        FROM Review
+        JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
+        CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
+        WHERE Review.rating = 5
+        GROUP BY similarity_score
+    ) AS Subquery
+    ORDER BY similarity_score DESC
+    LIMIT 25;
     
     `;
     const suffix = `
@@ -189,31 +211,47 @@ export async function call_agent(query: string) {
     console.log(resultObject);
     if (resultObject.length > 0 && (resultObject[0] as any).reviewId) {
       // get unique reviewIds of (reviewId, chunkNumber) pairs that have similarity score > 0.5
-      const reviewIds = Array.from(
+      let reviewIds = Array.from(
         new Set(
           resultObject
             .filter((r: any) => r.similarity_score >= 0.5)
             .map((r: any) => r.reviewId),
         ),
       );
+
+      // if there's nothing strongly similar enough, we will let the LLM decide if the "less relevant" info is useful
+      if (reviewIds.length === 0) {
+        reviewIds = Array.from(
+          new Set(
+            resultObject
+              .filter((r: any) => r.similarity_score >= 0.3)
+              .map((r: any) => r.reviewId),
+          ),
+        );
+      }
       const reviewIdsString = reviewIds.join(",");
       // get review bodies
-      const reviewBodies = await db.run(
-        `SELECT reviewId, body FROM Review WHERE reviewId IN (${reviewIdsString})`,
-      );
 
-      console.log(reviewBodies);
+      if (reviewIds.length === 0) {
+        llmOutput = "No semantically similar reviews found.";
+      } else {
+        const reviewBodies = await db.run(
+          `SELECT reviewId, body FROM Review WHERE reviewId IN (${reviewIdsString})`,
+        );
 
-      llmOutput = (
-        await llm.invoke(
-          "Using the following reviews, answer this query, referencing the reviewID where you get your evidence from: " +
-            query +
-            "\n" +
-            reviewBodies,
-        )
-      ).content;
+        console.log(reviewBodies);
 
-      // llmOutput = "LLM output";
+        llmOutput = (
+          await llm.invoke(
+            "Using the following reviews, answer this query, referencing the reviewID where you get your evidence from. You must reference every reviewID: " +
+              query +
+              "\n" +
+              reviewBodies,
+          )
+        ).content;
+
+        // llmOutput = "LLM output";
+      }
     }
 
     response.output = llmOutput as string;
