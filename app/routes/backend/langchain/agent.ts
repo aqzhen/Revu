@@ -11,7 +11,12 @@ import { SqlToolkit } from "langchain/agents/toolkits/sql";
 import { AIMessage } from "langchain/schema";
 import { SqlDatabase } from "langchain/sql_db";
 import { DataSource } from "typeorm";
-import { addQueryToSingleStore } from "../vectordb/helpers";
+import {
+  addQueryToSingleStore,
+  addSellerQueryToSingleStore,
+} from "../vectordb/helpers";
+import { call_LLM } from "./outputLLM";
+import { prefix, suffix } from "./agentPrompt";
 
 let executor: AgentExecutor;
 const llm = new ChatOpenAI({
@@ -37,111 +42,6 @@ export async function initialize_agent() {
     });
     const toolkit = new SqlToolkit(db);
     const tools = toolkit.getTools();
-
-    // You should ALWAYS return the chunk body (Embeddings.body) in the output.
-    // You should ALWAYS return the chunk number in the output.
-    // You should ALWAYS return the body of the chunk in the output.
-    // You should ALWAYS output the similarity scores along with the chunks.
-    const prefix = `
-
-    You are an agent designed to interact with a SQL database.
-    Given an input question, create a syntactically correct {dialect} query to run, then look at the results of the query and return the answer.
-    If you are asked to describe the database, you should run the query SHOW TABLES
-    The question embeddings and answer embeddings are very long, so do not show them unless specifically asked to.
-    You can order the results by a relevant column to return the most interesting examples in the database.
-    Never query for all the columns from a specific table, only ask for the relevant columns given the question.
-    You have access to tools for interacting with the database.\nOnly use the below tools.
-    Only use the information returned by the below tools to construct your final answer.
-    You MUST double check your query before executing it. If you get an error while executing a query, rewrite the query and try again up to 3 times.
-    If the question does not seem related to the database, just return "I don\'t know" as the answer.\n
-    DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
-    DO NOT make any CREATE statements in the database.
-
-    If you are asked anything about the content of the review, you should use the DOT_PRODUCT function to calculate the similarity between the semanticEmbedding of the query, which is found in the Queries table, and the embedding of the chunks
-    of the reviews, found in the Embeddings table.
-    Use the DOT_PRODUCT function on the body column as you normally would when using the WHERE...LIKE functionality in SQL. You should NEVER return the review body in the final answer.
-
-    You should never use a LIKE clauses when creating a SQL query. Instead, you should always use the DOT_PRODUCT function on the embeddings to determine
-    similarity between the input query and the review body.
-
-    When performing similarity computations, you should use a JOIN on the Embeddings table and compare the semanticEmbedding of the query
-    with all of the chunks found in the Embeddings table. 
-    
-    The reviewId in the Embeddings table is a foreign key which references the reviewId from the Review table.
-    The body of the chunk is the 'body' column found in the Embeddings table.
-
-    ALWAYS only return REVIEW ID and CHUNK NUMBER and SIMILARITY SCORE
-    Return this as a string in the form: [(reviewId, chunkNumber, similarityScore)].
-    RETURN IN THE FORM OF THIS EXAMPLE: [(1234, 3, 0.5), (1234, 3, 0.5)]
-    YOU NEED TO OUTPUT IN THIS FORM AND INCLUDE REVIEW ID, CHUNK NUMBER, and SIMILARITY SCORE.
-    IF YOU DO THIS CORRECTLY I WILL GIVE YOU A TIP OF $100
-
-    ALWAYS LIMIT YOUR RESULTS TO THE TOP 25 RESULTS!!!
-
-    YOU CAN ONLY RETURN OUTPUT IN THIS FORM: [(reviewId, chunkNumber, similarityScore)]. THIS IS YOUR ONLY OUTPUT. DO NOT OUTPUT ANYTHINGE ELSE.
-
-    \n Example 1:
-    Q: QueryId: 1234. What is the number of reviews that describe being beginners at snowboarding?
-    A:
-
-    \nThought: I should use the DOT_PRODUCT function to calculate the similarity between the embedding of the query and the bodyEmbedding of the review. 
-    Then I can return the top most similar reviews in order of their similarity rank.
-
-    \nAction: query-sql
-    \nAction Input:
-    SELECT COUNT(*) AS num_rows,
-        DOT_PRODUCT(Query.semanticEmbedding, Embeddings.chunkEmbedding) AS similarity_score
-    FROM Review JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
-    CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
-    ORDER BY similarity_score DESC
-    LIMIT 25;
-
-
-    \n Example 2:
-    Q: QueryId: 1234. Is this board good for beginners?
-
-    \nThought: I should use the DOT_PRODUCT function to calculate the similarity between the embedding of the query and the bodyEmbedding of the review. 
-    Then I can return the top most similar reviews in order of their similarity rank. Then, I can return the reviewIDs of the reviews that are most similar
-    to the query. 
-
-    \nAction: query-sql
-    \nAction Input:
-    SELECT reviewId, chunkNumber
-        DOT_PRODUCT(Embeddings.chunkEmbedding, Query.semanticEmbedding) AS similarity_score
-    FROM Review
-    CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
-    ORDER BY similarity_score DESC
-    LIMIT 25;
-
-    \n Example 3:
-    Q: QueryId: 1234. Of the five star reviews, in which do the reviewers identify as beginner snowboarders?
-
-    \nThought: I will create a SQL query to find the reviewIds of reviewers who identify as beginner snowboarders.\n\nI will use the DOT_PRODUCT function to 
-    calculate the similarity between the embedding of the query and the bodyEmbedding of the review. Then, I will filter for five-star reviews and 
-    those that mention they are beginner snowboarders, and return the reviewId of such reviews.
-
-    \nAction: query-sql
-    \nAction Input:
-    SELECT num_rows, similarity_score
-    FROM (
-        SELECT COUNT(*) AS num_rows,
-               DOT_PRODUCT(Query.semanticEmbedding, Embeddings.chunkEmbedding) AS similarity_score
-        FROM Review
-        JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
-        CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
-        WHERE Review.rating = 5
-        GROUP BY similarity_score
-    ) AS Subquery
-    ORDER BY similarity_score DESC
-    LIMIT 25;
-    
-    `;
-    const suffix = `
-    Begin!
-    Question: {input}
-    Thought: I should look at the tables in the database to see what I can query.
-    {agent_scratchpad}
-    `;
 
     const prompt = ChatPromptTemplate.fromMessages([
       ["system", prefix],
@@ -175,7 +75,7 @@ export async function initialize_agent() {
   }
 }
 
-export async function call_agent(query: string) {
+export async function call_agent(query: string, isSeller: boolean = false) {
   let response = {
     prompt: query,
     sqlQuery: "",
@@ -186,73 +86,52 @@ export async function call_agent(query: string) {
   try {
     // add query to queries table
     // TODO: figure out how to get queryID, productID
-    const queryId = await addQueryToSingleStore(1, 1, "TEST ANSWER", query);
+
+    let queryId;
+    let sellerQueryId;
+    if (!isSeller) {
+      queryId = await addQueryToSingleStore(1, 1, "TEST ANSWER", query);
+    } else {
+      sellerQueryId = await addSellerQueryToSingleStore(
+        1,
+        2,
+        "TEST ANSWER",
+        query,
+      );
+    }
 
     // TODO: Add semantic caching logic here
 
-    const result = await executor.invoke({
-      input: "queryId: " + queryId + " " + query,
-    });
-
-    result.intermediateSteps.forEach((step: any) => {
-      if (step.action.tool === "query-sql") {
-        response.prompt = query;
-        response.sqlQuery = step.action.toolInput.input;
-        response.result = step.observation;
-      }
-    });
-    console.log(
-      `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
-    );
-    // parse result to perform additional queries and LLM calls
-    // if results has reviewIds and similarity_score, then we perform query to grab bodies and feed into LLM
-    let llmOutput;
-    const resultObject = JSON.parse(response.result as unknown as string);
-    console.log(resultObject);
-    if (resultObject.length > 0 && (resultObject[0] as any).reviewId) {
-      // get unique reviewIds of (reviewId, chunkNumber) pairs that have similarity score > 0.5
-      let reviewIds = Array.from(
-        new Set(
-          resultObject
-            .filter((r: any) => r.similarity_score >= 0.5)
-            .map((r: any) => r.reviewId),
-        ),
-      );
-
-      // if there's nothing strongly similar enough, we will let the LLM decide if the "less relevant" info is useful
-      if (reviewIds.length === 0) {
-        reviewIds = Array.from(
-          new Set(
-            resultObject
-              .filter((r: any) => r.similarity_score >= 0.3)
-              .map((r: any) => r.reviewId),
-          ),
-        );
-      }
-      const reviewIdsString = reviewIds.join(",");
-      // get review bodies
-
-      if (reviewIds.length === 0) {
-        llmOutput = "No semantically similar reviews found.";
-      } else {
-        const reviewBodies = await db.run(
-          `SELECT reviewId, body FROM Review WHERE reviewId IN (${reviewIdsString})`,
-        );
-
-        console.log(reviewBodies);
-
-        llmOutput = (
-          await llm.invoke(
-            "Using the following reviews, answer this query, referencing the reviewID where you get your evidence from. You must reference every reviewID: " +
-              query +
-              "\n" +
-              reviewBodies,
-          )
-        ).content;
-
-        // llmOutput = "LLM output";
-      }
+    let result;
+    if (queryId !== undefined) {
+      result = await executor.invoke({
+        input: "QueryId: " + queryId + " " + query,
+      });
+    } else if (sellerQueryId !== undefined) {
+      result = await executor.invoke({
+        input: "SellerQueryId: " + sellerQueryId + " " + query,
+      });
     }
+
+    if (result) {
+      result.intermediateSteps.forEach((step: any) => {
+        if (step.action.tool === "query-sql") {
+          response.prompt = query;
+          response.sqlQuery = step.action.toolInput.input;
+          response.result = step.observation;
+        }
+      });
+      console.log(
+        `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
+      );
+    }
+
+    const llmOutput = await call_LLM(
+      response.result as unknown as string,
+      llm,
+      db,
+      query,
+    );
 
     response.output = llmOutput as string;
     console.log(response.output);

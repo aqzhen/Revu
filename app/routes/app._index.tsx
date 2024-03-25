@@ -25,11 +25,12 @@ import { chunk_string } from "./backend/langchain/chunking";
 import {
   addChunksToSingleStore,
   addReviewsToSingleStore,
-  getReviewChunks,
+  getReviewChunksInfo,
   connectToSingleStore,
   createEmbeddingsTable,
   createQueriesTable,
   createReviewTable,
+  getQueryInfo,
 } from "./backend/vectordb/helpers";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -56,8 +57,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   var chunkString = formData.get("chunkString") as string;
   var reviewIds = formData.get("reviewIds") as string;
   var chunkNumbers = formData.get("chunkNumbers") as string;
-
-  console.log(productId);
+  var queryIds = formData.get("queryIds") as string;
 
   if (apiQuery === "fetchJudgeReviews") {
     return fetchJudgeReviews(productId);
@@ -71,11 +71,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   } else if (apiQuery === "chunkString") {
     return chunk_string(chunkString);
   } else if (apiQuery === "getReviewChunks") {
-    let get = await getReviewChunks(
+    let get = await getReviewChunksInfo(
       JSON.parse(reviewIds),
       JSON.parse(chunkNumbers),
     );
-    console.log(get);
+    return get;
+  } else if (apiQuery === "getQueriesForQuery") {
+    let get = await getQueryInfo(JSON.parse(queryIds));
     return get;
   }
 };
@@ -84,7 +86,8 @@ export default function Index() {
   const [products, setProducts] = useState<any[]>([]);
   var [selectedProduct, setSelectedProduct] = useState<number>();
   var [reviewListDetails, setReviewListDetails] = useState<Review[]>([]); // used to store the entire list of reviews for a product
-  var [chunkBodies, setChunkBodies] = useState<string[]>([]); // used to store the list of reviews returend on a query
+  var [chunkBodies, setChunkBodies] = useState<string[]>([]); // used to store the list of reviews returned on a query
+  var [queryInfo, setQueryInfo] = useState<string[]>([]); // used to store the list of queries returned on a query
   var [queryString, setQueryString] = useState<string>("");
   var [queryResponse, setQueryResponse] = useState<string>(); // this is the LLM output text answer
   var [queryResult, setQueryResult] = useState<string>(); // this is the sql query result (resultIds, etc..)
@@ -99,13 +102,28 @@ export default function Index() {
   // calling api to get reviews for returned reviews/chunks after a query
   const reviewIds: number[] = [];
   const chunkNumbers: number[] = [];
+  const userIds: number[] = [];
+  const queries: string[] = [];
+  const queryIds: number[] = [];
   useEffect(() => {
     if (queryResult) {
-      JSON.parse(queryResult as string).forEach((obj: any) => {
-        reviewIds.push(obj.reviewId);
-        chunkNumbers.push(obj.chunkNumber);
-      });
-      getReviewsForQuery(reviewIds, chunkNumbers);
+      // TODO: Case on the queryResult to determine if it is query on reviews or queries
+      const parsedResult = JSON.parse(queryResult as string);
+
+      if (parsedResult.length > 0 && parsedResult[0].reviewId) {
+        parsedResult.forEach((obj: any) => {
+          reviewIds.push(obj.reviewId);
+          chunkNumbers.push(obj.chunkNumber);
+        });
+        getReviewsForQuery(reviewIds, chunkNumbers);
+      } else if (parsedResult.length > 0 && parsedResult[0].queryId) {
+        parsedResult.forEach((obj: any) => {
+          queryIds.push(obj.queryId);
+          userIds.push(obj.userId);
+          queries.push(obj.query);
+        });
+        getQueriesForQuery(queryIds, userIds, queries);
+      }
     }
   }, [queryResult]);
 
@@ -114,12 +132,14 @@ export default function Index() {
       var parsedData = parseReviewData(actionResponse?.reviews);
       setReviewListDetails(parsedData);
     } else if (actionResponse && actionResponse?.output) {
-      console.log(actionResponse?.output);
       setQueryResponse(actionResponse?.output);
       setQueryResult(actionResponse?.result);
       setSqlQuery(actionResponse?.sqlQuery);
     } else if (actionResponse && actionResponse?.bodies) {
       setChunkBodies(actionResponse?.bodies);
+    } else if (actionResponse && actionResponse?.query) {
+      setQueryInfo(actionResponse?.query);
+      console.log("HIIIII" + actionResponse?.query);
     }
   }, [actionResponse]);
 
@@ -154,6 +174,22 @@ export default function Index() {
         apiQuery: "getReviewChunks",
         reviewIds: JSON.stringify(reviewIds),
         chunkNumbers: JSON.stringify(chunkNumbers),
+      },
+      { replace: true, method: "POST" },
+    );
+  };
+
+  const getQueriesForQuery = async (
+    queryIds: number[],
+    userIds: number[],
+    queries: string[],
+  ) => {
+    await submit(
+      {
+        apiQuery: "getQueriesForQuery",
+        queryIds: JSON.stringify(queryIds),
+        userIds: JSON.stringify(userIds),
+        queries: JSON.stringify(queries),
       },
       { replace: true, method: "POST" },
     );
@@ -237,24 +273,6 @@ export default function Index() {
         </Button>
       </Card>
 
-      {/* <Card>
-        <input
-          type="text"
-          placeholder="chunk string"
-          onChange={(e) => setChunkString(e.target.value)}
-        />
-        <Button
-          onClick={() =>
-            submit(
-              { apiQuery: "chunkString", chunkString: chunkString },
-              { replace: true, method: "POST" },
-            )
-          }
-        >
-          Test Chunk String
-        </Button>
-      </Card> */}
-
       {queryResponse && (
         <>
           <Card>
@@ -279,6 +297,7 @@ export default function Index() {
                     )}
 
                     {chunkBodies && <p>{chunkBodies[index]}</p>}
+                    {queryInfo && <p>{queryInfo[index]}</p>}
                   </Card>
                 ))}
             </BlockStack>

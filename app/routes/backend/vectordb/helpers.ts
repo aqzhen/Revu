@@ -77,14 +77,38 @@ export async function createQueriesTable(deleteExistingReviews: boolean) {
                     productId BIGINT,
                     userId BIGINT,
                     query TEXT,
-                    queryEmbedding VECTOR(1536), -- OpenAI embeddings are 1536-dimensional, embedding for entire query
-                    semanticEmbedding VECTOR(768), -- OpenAI embeddings are 1536-dimensional, semantic embedding is embedding for relevant context of query
+                    queryEmbedding VECTOR(768), -- OpenAI embeddings are 768-dimensional, embedding for entire query
+                    semanticEmbedding VECTOR(768), -- OpenAI embeddings are 768-dimensional, semantic embedding is embedding for relevant context of query
                     answer TEXT
                 )
             `);
     console.log("Queries table created successfully.");
   } catch (err) {
     console.log("Queries table already exists");
+  }
+}
+
+export async function createSellerQueriesTable(deleteExistingReviews: boolean) {
+  try {
+    if (deleteExistingReviews) {
+      await singleStoreConnection.execute(
+        "DROP TABLE IF EXISTS Seller_Queries",
+      );
+    }
+    await singleStoreConnection.execute(`
+                CREATE TABLE Seller_Queries (
+                  queryId BIGINT AUTO_INCREMENT PRIMARY KEY,
+                  productId BIGINT,
+                  userId BIGINT,
+                  query TEXT,
+                  queryEmbedding VECTOR(768), -- OpenAI embeddings are 768-dimensional, embedding for entire query
+                  semanticEmbedding VECTOR(768), -- OpenAI embeddings are 768-dimensional, semantic embedding is embedding for relevant context of query
+                  answer TEXT
+              )
+          `);
+    console.log("Seller_Queries table created successfully.");
+  } catch (err) {
+    console.log("Seller_Queries table already exists");
   }
 }
 
@@ -205,30 +229,18 @@ export async function addQueryToSingleStore(
         INSERT INTO Queries (
             productId,
             userId,
+            query,
             answer
         ) VALUES (
             ${productId},
             ${userId},
+            '${query}',
             '${answer.replace(/'/g, "\\'")}'
         )
         `,
     );
-    // only generate embedding if the review was added (new review)
+    // only generate embedding if the query was added (this always happens for now, since queries aren't deduplicated)
     if ((results as any).affectedRows > 0) {
-      // TODO: don't need query embedding for now, but will need for semantic cache
-      // const embedding = await generateEmbedding(query);
-      // await singleStoreConnection.execute(
-      //   `
-      //     UPDATE Queries
-      //     SET embedding = ?
-      //     WHERE queryId = ?
-      //   `,
-      //   [embedding, queryId],
-      // );
-
-      // get semantic context from LLM
-      // const queryContext = OpenAI.
-
       const queryId = (results as any).insertId;
 
       // generate embedding and add to db
@@ -251,8 +263,55 @@ export async function addQueryToSingleStore(
   }
 }
 
+export async function addSellerQueryToSingleStore(
+  productId: number,
+  userId: number,
+  answer: string,
+  query: string,
+): Promise<void> {
+  try {
+    const [results, buff] = await singleStoreConnection.execute(
+      `
+        INSERT INTO Seller_Queries (
+            productId,
+            userId,
+            query,
+            answer
+        ) VALUES (
+            ${productId},
+            ${userId},
+            '${query}',
+            '${answer.replace(/'/g, "\\'")}'
+        )
+        `,
+    );
+
+    // only generate embedding if the query was added (this always happens for now, since queries aren't deduplicated)
+    if ((results as any).affectedRows > 0) {
+      const queryId = (results as any).insertId;
+
+      // generate embedding and add to db
+      const semanticEmbdding = await generateEmbedding(query);
+      await singleStoreConnection.execute(
+        `
+          UPDATE Seller_Queries
+          SET semanticEmbedding = ?
+          WHERE queryId = ?
+        `,
+        [semanticEmbdding, queryId],
+      );
+
+      console.log("Query added successfully.");
+      return queryId;
+    }
+  } catch (err) {
+    console.error("ERROR", err);
+    process.exit(1);
+  }
+}
+
 // Getters
-export async function getReviewChunks(
+export async function getReviewChunksInfo(
   reviewIDs: number[],
   chunkNumbers: number[],
 ): Promise<{ bodies: string[] }> {
@@ -273,6 +332,33 @@ export async function getReviewChunks(
       bodies.push(body);
     }
     return { bodies };
+  } catch (err) {
+    console.error("ERROR", err);
+    process.exit(1);
+  }
+}
+
+export async function getQueryInfo(
+  queryIds: number[],
+): Promise<{ userIds: number[]; queries: string[] }> {
+  try {
+    const userIds: number[] = [];
+    const queries: string[] = [];
+    for (let i = 0; i < queryIds.length; i++) {
+      const queryId = queryIds[i];
+      const [results, buff] = await singleStoreConnection.execute(
+        `
+        SELECT userId, query FROM Queries WHERE queryId = ?
+      `,
+        [queryId],
+      );
+      const userId = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
+        ?.query;
+      const query = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0];
+      userIds.push(userId);
+      queries.push(query);
+    }
+    return { userIds: userIds, queries: queries };
   } catch (err) {
     console.error("ERROR", err);
     process.exit(1);
