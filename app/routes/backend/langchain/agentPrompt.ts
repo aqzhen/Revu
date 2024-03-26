@@ -35,8 +35,10 @@ ALWAYS LIMIT YOUR RESULTS TO THE TOP 25 RESULTS!!!
 
 YOU CAN ONLY RETURN OUTPUT IN THIS FORM: [(reviewId, chunkNumber, similarityScore)]. THIS IS YOUR ONLY OUTPUT. DO NOT OUTPUT ANYTHINGE ELSE.
 
+
 \n Example 1:
 Q: QueryId: 1234. What is the number of reviews that describe being beginners at snowboarding?
+Alternate Q: QueryID: 1234. How many reviews mention being a beginner at snowboarding?
 A:
 
 \nThought: I should use the DOT_PRODUCT function to calculate the similarity between the embedding of the query and the bodyEmbedding of the review. 
@@ -44,12 +46,19 @@ Then I can return the top most similar reviews in order of their similarity rank
 
 \nAction: query-sql
 \nAction Input:
-SELECT COUNT(*) AS num_rows,
-    DOT_PRODUCT(Query.semanticEmbedding, Embeddings.chunkEmbedding) AS similarity_score
-FROM Review JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
-CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
-ORDER BY similarity_score DESC
-LIMIT 25;
+SELECT COUNT(*) AS num_rows
+FROM (
+    SELECT 
+        DOT_PRODUCT(Query.semanticEmbedding, Embeddings.chunkEmbedding) AS similarity_score
+    FROM 
+        Review 
+    JOIN 
+        Embeddings ON Review.reviewId = Embeddings.reviewId
+    CROSS JOIN 
+        (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
+) AS subquery
+WHERE 
+    similarity_score > 0.5;
 
 
 \n Example 2:
@@ -77,10 +86,9 @@ those that mention they are beginner snowboarders, and return the reviewId of su
 
 \nAction: query-sql
 \nAction Input:
-SELECT num_rows, similarity_score
+SELECT reviewId, similarity_score
 FROM (
-    SELECT COUNT(*) AS num_rows,
-           DOT_PRODUCT(Query.semanticEmbedding, Embeddings.chunkEmbedding) AS similarity_score
+    SELECT reviewId, DOT_PRODUCT(Query.semanticEmbedding, Embeddings.chunkEmbedding) AS similarity_score
     FROM Review
     JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
     CROSS JOIN (SELECT semanticEmbedding FROM Queries WHERE queryId = 1234) AS Query
@@ -116,19 +124,18 @@ Whenever you are passed in SellerQueryId rather than QueryId, you must use the S
 
 Example:
 
-Q: SellerQueryId: 1234. What is the number of reviews that describe being beginners at snowboarding?
+Q: SellerQueryId: 1234. Is this board good for beginners?
 A:
 
-\nThought: I should use the DOT_PRODUCT function to calculate the similarity between the embedding of the query and the bodyEmbedding of the review. 
-Then I can return the top most similar reviews in order of their similarity rank.
+\nThought: I should use the DOT_PRODUCT function to calculate the similarity between the embedding of the query (in the sellerQuery table) and the bodyEmbedding of the review. 
+Then I can return the top most similar reviews in order of their similarity rank. Then, I can return the reviewIDs of the reviews that are most similar to the query. 
 
 \nAction: query-sql
-
 \nAction Input:
-SELECT COUNT(*) AS num_rows,
-    DOT_PRODUCT(SellerQuery.semanticEmbedding, Embeddings.chunkEmbedding) AS similarity_score
-FROM Review JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
-CROSS JOIN (SELECT semanticEmbedding FROM SellerQueries WHERE sellerQueryId = 1234) AS SellerQuery
+SELECT reviewId, chunkNumber
+    DOT_PRODUCT(Embeddings.chunkEmbedding, SellerQuery.semanticEmbedding) AS similarity_score
+FROM Review
+CROSS JOIN (SELECT semanticEmbedding FROM SellerQueries WHERE queryId = 1234) AS SellerQuery
 ORDER BY similarity_score DESC
 LIMIT 25;
 
@@ -146,9 +153,36 @@ A:
 SELECT queryId, userId, query
     DOT_PRODUCT(SellerQuery.semanticEmbedding, Queries.semanticEmbedding) AS similarity_score   
 FROM Queries
-CROSS JOIN (SELECT semanticEmbedding FROM SellerQueries WHERE sellerQueryId = 1234) AS SellerQuery
+CROSS JOIN (SELECT semanticEmbedding FROM SellerQueries WHERE queryId = 1234) AS SellerQuery
 ORDER BY similarity_score DESC
 LIMIT 25;
+
+ALWAYS only return Query Id, User Id, Query and SIMILARITY SCORE
+Return this as a string in the form: [(queryId, userId, query, similarity_score)].
+
+Example:
+
+Q: SellerQueryId: 1234. How many queries ask about beginners?
+A:
+
+\nThought: I should use the DOT_PRODUCT function to calculate the similarity between the embedding of the seller's query and the embedding of the queries. Then I can return the top most similar queries in order of their similarity rank.
+
+\nAction: query-sql
+
+\nAction Input:
+
+SELECT COUNT(*) AS num_rows
+FROM (
+    SELECT 
+        DOT_PRODUCT(SellerQuery.semanticEmbedding, Queries.semanticEmbedding) AS similarity_score
+    FROM 
+        Queries 
+    CROSS JOIN (SELECT semanticEmbedding FROM SellerQueries WHERE queryId = 1234) AS SellerQuery
+
+) AS subquery
+WHERE 
+    similarity_score > 0.5;
+
 
 
 `;

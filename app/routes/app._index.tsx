@@ -31,6 +31,7 @@ import {
   createQueriesTable,
   createReviewTable,
   getQueryInfo,
+  createSellerQueriesTable,
 } from "./backend/vectordb/helpers";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -41,6 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   createReviewTable(false);
   createQueriesTable(false);
   createEmbeddingsTable(false);
+  createSellerQueriesTable(false);
 
   await initialize_agent();
 
@@ -54,10 +56,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   var productId = formData.get("productId") as string;
   var reviews = formData.get("reviews") as string;
   var agentQuery = formData.get("agentQuery") as string;
+  var userMode = formData.get("userMode") as string;
   var chunkString = formData.get("chunkString") as string;
   var reviewIds = formData.get("reviewIds") as string;
   var chunkNumbers = formData.get("chunkNumbers") as string;
   var queryIds = formData.get("queryIds") as string;
+  var tableToQuery = formData.get("tableToQuery") as string;
 
   if (apiQuery === "fetchJudgeReviews") {
     return fetchJudgeReviews(productId);
@@ -67,7 +71,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     addChunksToSingleStore(JSON.parse(reviews || "[]"));
     return null;
   } else if (apiQuery === "callAgent") {
-    return call_agent(agentQuery);
+    return call_agent(agentQuery, JSON.parse(userMode), tableToQuery);
   } else if (apiQuery === "chunkString") {
     return chunk_string(chunkString);
   } else if (apiQuery === "getReviewChunks") {
@@ -139,7 +143,6 @@ export default function Index() {
       setChunkBodies(actionResponse?.bodies);
     } else if (actionResponse && actionResponse?.query) {
       setQueryInfo(actionResponse?.query);
-      console.log("HIIIII" + actionResponse?.query);
     }
   }, [actionResponse]);
 
@@ -218,6 +221,8 @@ export default function Index() {
     initializeReviews(Number(trimmed_id));
   };
 
+  const [userMode, setUserMode] = useState<boolean>(true);
+
   return (
     <Page>
       <Card>
@@ -264,13 +269,46 @@ export default function Index() {
         <Button
           onClick={() =>
             submit(
-              { apiQuery: "callAgent", agentQuery: queryString },
+              {
+                apiQuery: "callAgent",
+                agentQuery: queryString,
+                userMode: userMode,
+                tableToQuery: "Review",
+              },
               { replace: true, method: "POST" },
             )
           }
         >
           Query Reviews
         </Button>
+        <Button
+          onClick={() =>
+            submit(
+              {
+                apiQuery: "callAgent",
+                agentQuery: queryString,
+                userMode: userMode,
+                tableToQuery: "Queries",
+              },
+              { replace: true, method: "POST" },
+            )
+          }
+        >
+          Query Past Queries
+        </Button>
+        <Button onClick={() => setUserMode(!userMode)}>
+          {userMode ? "Seller Mode" : "User Mode"}
+        </Button>
+
+        {userMode && (
+          <p>Seller Mode is enabled: your queries will not be stored</p>
+        )}
+        {!userMode && (
+          <p>
+            User Mode is enabled: your queries will be stored and queriable
+            later
+          </p>
+        )}
       </Card>
 
       {queryResponse && (

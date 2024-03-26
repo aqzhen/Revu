@@ -75,7 +75,11 @@ export async function initialize_agent() {
   }
 }
 
-export async function call_agent(query: string, isSeller: boolean = false) {
+export async function call_agent(
+  query: string,
+  isSeller: boolean = false,
+  tableToQuery: string,
+) {
   let response = {
     prompt: query,
     sqlQuery: "",
@@ -105,11 +109,23 @@ export async function call_agent(query: string, isSeller: boolean = false) {
     let result;
     if (queryId !== undefined) {
       result = await executor.invoke({
-        input: "QueryId: " + queryId + " " + query,
+        input:
+          "QueryId: " +
+          queryId +
+          ". Query the " +
+          tableToQuery +
+          " table. " +
+          query,
       });
     } else if (sellerQueryId !== undefined) {
       result = await executor.invoke({
-        input: "SellerQueryId: " + sellerQueryId + " " + query,
+        input:
+          "SellerQueryId: " +
+          sellerQueryId +
+          ". Query the " +
+          tableToQuery +
+          " table. " +
+          query,
       });
     }
 

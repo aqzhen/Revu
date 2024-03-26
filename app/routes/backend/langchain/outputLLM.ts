@@ -17,7 +17,7 @@ export async function call_LLM(
     let reviewIds = Array.from(
       new Set(
         resultObject
-          .filter((r: any) => r.similarity_score >= 0.5)
+          .filter((r: any) => r.similarity_score >= 0.45)
           .map((r: any) => r.reviewId),
       ),
     );
