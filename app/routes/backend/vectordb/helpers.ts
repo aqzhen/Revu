@@ -2,8 +2,8 @@ import fs from "fs";
 import mysql, { RowDataPacket } from "mysql2/promise";
 import OpenAI from "openai";
 import { Review } from "../../../globals";
-import { chunk_string } from "../langchain/chunking";
-import { json } from "@remix-run/node";
+import { Chunk, chunk_string } from "../langchain/chunking";
+import { call_reviewPromptLLM } from "../langchain/reviewPromptLLM";
 
 let singleStoreConnection: mysql.Connection;
 export async function connectToSingleStore() {
@@ -125,6 +125,8 @@ export async function createEmbeddingsTable(deleteExistingReviews: boolean) {
                     chunkNumber BIGINT,
                     body TEXT,
                     chunkEmbedding VECTOR(768),
+                    startIndex BIGINT,
+                    endIndex BIGINT,
                     PRIMARY KEY (reviewId, chunkNumber)
                 )
             `);
@@ -137,7 +139,7 @@ export async function createEmbeddingsTable(deleteExistingReviews: boolean) {
 // Adders
 export async function addChunksToSingleStore(reviews: Review[]): Promise<void> {
   for (const review of reviews) {
-    const chunks = await chunk_string(review.body);
+    const chunks = await chunk_string(review.body, review.reviewId);
     let i = 1;
     for (const chunk of chunks) {
       try {
@@ -145,17 +147,21 @@ export async function addChunksToSingleStore(reviews: Review[]): Promise<void> {
           INSERT IGNORE INTO Embeddings (
               reviewId,
               chunkNumber,
-              body
+              body,
+              startIndex,
+              endIndex
           ) VALUES (
               ${review.reviewId},
               ${i},
-              '${chunk.replace(/'/g, "\\'")}'
+              '${chunk.chunkBody.replace(/'/g, "\\'")}',
+              ${chunk.startIndex},
+              ${chunk.endIndex}
           )
       `);
 
         // only generate embedding if the review was added (new review)
         if ((results as any).affectedRows > 0) {
-          const embedding = await generateEmbedding(chunk);
+          const embedding = await generateEmbedding(chunk.chunkBody);
           // Do something with the embedding
           await singleStoreConnection.execute(
             `
@@ -314,24 +320,34 @@ export async function addSellerQueryToSingleStore(
 export async function getReviewChunksInfo(
   reviewIDs: number[],
   chunkNumbers: number[],
-): Promise<{ bodies: string[] }> {
-  try {
-    console.log("Getting review chunks", reviewIDs, chunkNumbers);
-    const bodies: string[] = [];
+  ): Promise<{ chunks : Chunk[] }> {
+    try {
+      console.log("Getting review chunks", reviewIDs, chunkNumbers);
+      const chunks : Chunk[] = [];
     for (let i = 0; i < reviewIDs.length; i++) {
       const reviewID = reviewIDs[i];
       const chunkNumber = chunkNumbers[i];
       const [results, buff] = await singleStoreConnection.execute(
         `
-          SELECT body FROM Embeddings WHERE reviewId = ? AND chunkNumber = ?
+          SELECT body, startIndex, endIndex FROM Embeddings WHERE reviewId = ? AND chunkNumber = ?
         `,
         [reviewID, chunkNumber],
       );
       const body = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
         ?.body;
-      bodies.push(body);
+      const startIndex = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
+        ?.startIndex;
+      const endIndex = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
+        ?.endIndex;
+      let testChunk : Chunk = {
+        chunkBody : body,
+        startIndex : startIndex,
+        endIndex : endIndex,
+        reviewId : reviewID
+      }
+      chunks.push(testChunk);
     }
-    return { bodies };
+    return { chunks };
   } catch (err) {
     console.error("ERROR", err);
     process.exit(1);
@@ -377,4 +393,14 @@ async function generateEmbedding(body: string) {
     })
   ).data[0].embedding;
   return JSON.stringify(embedding);
+}
+
+export async function getReviewPromptData(
+
+): Promise<{ reviewPromptData : string[] }> {
+  console.log("I am here in the API");
+  let llmOutput = await call_reviewPromptLLM(1);
+  console.log("API has returned llm output here it is")
+  console.log(llmOutput);
+  return {reviewPromptData : [llmOutput]};
 }

@@ -15,8 +15,8 @@ import {
   addQueryToSingleStore,
   addSellerQueryToSingleStore,
 } from "../vectordb/helpers";
-import { call_LLM } from "./outputLLM";
 import { prefix, suffix } from "./agentPrompt";
+import { call_LLM } from "./outputLLM";
 
 let executor: AgentExecutor;
 const llm = new ChatOpenAI({
@@ -137,9 +137,9 @@ export async function call_agent(
           response.result = step.observation;
         }
       });
-      console.log(
-        `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
-      );
+      // console.log(
+      //   `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
+      // );
     }
 
     const llmOutput = await call_LLM(

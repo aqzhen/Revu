@@ -1,5 +1,5 @@
-import { SqlDatabase } from "langchain/sql_db";
 import { ChatOpenAI } from "@langchain/openai";
+import { SqlDatabase } from "langchain/sql_db";
 
 export async function call_LLM(
   responseResult: string,

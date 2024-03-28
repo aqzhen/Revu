@@ -6,13 +6,12 @@ import {
   useSubmit,
 } from "@remix-run/react";
 import {
-  Box,
+  BlockStack,
   Button,
   Card,
   DataTable,
-  BlockStack,
   Page,
-  Spinner,
+  Spinner
 } from "@shopify/polaris";
 import { useEffect, useState } from "react";
 import { authenticate } from "../shopify.server";
@@ -21,24 +20,27 @@ import { parseReviewData } from "./metafield_parsers/judge";
 // import { addReviewsToDatabase } from "./backend/prisma/helpers";
 import { Review } from "../globals";
 import { call_agent, initialize_agent } from "./backend/langchain/agent";
-import { chunk_string } from "./backend/langchain/chunking";
+import { Chunk } from "./backend/langchain/chunking";
 import {
   addChunksToSingleStore,
   addReviewsToSingleStore,
-  getReviewChunksInfo,
   connectToSingleStore,
   createEmbeddingsTable,
   createQueriesTable,
   createReviewTable,
-  getQueryInfo,
   createSellerQueriesTable,
+  getQueryInfo,
+  getReviewChunksInfo,
+  getReviewPromptData
 } from "./backend/vectordb/helpers";
+import Popup from "./frontend/components/Popup";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   console.log("Connecting to SingleStore");
   const db = await connectToSingleStore();
+  
   createReviewTable(false);
   createQueriesTable(false);
   createEmbeddingsTable(false);
@@ -72,30 +74,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return null;
   } else if (apiQuery === "callAgent") {
     return call_agent(agentQuery, JSON.parse(userMode), tableToQuery);
-  } else if (apiQuery === "chunkString") {
-    return chunk_string(chunkString);
   } else if (apiQuery === "getReviewChunks") {
     let get = await getReviewChunksInfo(
       JSON.parse(reviewIds),
       JSON.parse(chunkNumbers),
     );
+    console.log("Result from getReviewChunksInfo", get)
     return get;
   } else if (apiQuery === "getQueriesForQuery") {
     let get = await getQueryInfo(JSON.parse(queryIds));
     return get;
+  } else if (apiQuery === "getReviewPromptData") {
+    let get = await getReviewPromptData();
+    return get;
   }
 };
+
+function chunksToReviews(chunks : Chunk[]) {
+  return chunks.map((chunk: Chunk, index: number) => (
+    <Card key={index}>
+      {chunks[index] && <p>{chunks[index].chunkBody}</p>}
+    </Card>
+  ))
+}
 
 export default function Index() {
   const [products, setProducts] = useState<any[]>([]);
   var [selectedProduct, setSelectedProduct] = useState<number>();
   var [reviewListDetails, setReviewListDetails] = useState<Review[]>([]); // used to store the entire list of reviews for a product
-  var [chunkBodies, setChunkBodies] = useState<string[]>([]); // used to store the list of reviews returned on a query
+  // var [chunkBodies, setChunkBodies] = useState<string[]>([]); // used to store the list of reviews returned on a query
   var [queryInfo, setQueryInfo] = useState<string[]>([]); // used to store the list of queries returned on a query
   var [queryString, setQueryString] = useState<string>("");
   var [queryResponse, setQueryResponse] = useState<string>(); // this is the LLM output text answer
   var [queryResult, setQueryResult] = useState<string>(); // this is the sql query result (resultIds, etc..)
   var [sqlQuery, setSqlQuery] = useState<string>("");
+  var [relevantChunks, setRelevantChunks] = useState<Chunk[]>([]);
+  var [isPopupOpen, setIsPopupOpen] = useState(false);
+  var [reviewPromptData, setReviewPromptData] = useState<string[]>([]);
 
   const nav = useNavigation();
   const actionResponse = useActionData<typeof action>() as any;
@@ -139,10 +154,13 @@ export default function Index() {
       setQueryResponse(actionResponse?.output);
       setQueryResult(actionResponse?.result);
       setSqlQuery(actionResponse?.sqlQuery);
-    } else if (actionResponse && actionResponse?.bodies) {
-      setChunkBodies(actionResponse?.bodies);
+    } else if (actionResponse && actionResponse?.chunks) {
+      // setChunkBodies(actionResponse?.bodies);
+      setRelevantChunks(actionResponse?.chunks);
     } else if (actionResponse && actionResponse?.query) {
       setQueryInfo(actionResponse?.query);
+    } else if (actionResponse && actionResponse?.reviewPromptData) {
+      setReviewPromptData(actionResponse?.reviewPromptData);
     }
   }, [actionResponse]);
 
@@ -198,6 +216,20 @@ export default function Index() {
     );
   };
 
+  const togglePopup = async () => {
+    setIsPopupOpen(!isPopupOpen);
+    await submit(
+      {
+        apiQuery: "getReviewPromptData",
+      },
+      { replace: true, method: "POST" },
+    );
+  };
+
+  const closePopup = () => {
+    setIsPopupOpen(false); // Close the popup
+    setReviewPromptData([]);
+  };
   // PRODUCTS
   // get products data on load
   const productsData = useLoaderData<typeof loader>();
@@ -334,7 +366,7 @@ export default function Index() {
                       JSON.stringify(obj)
                     )}
 
-                    {chunkBodies && <p>{chunkBodies[index]}</p>}
+                    {relevantChunks[index] && <p>{relevantChunks[index].chunkBody}</p>}
                     {queryInfo && <p>{queryInfo[index]}</p>}
                   </Card>
                 ))}
@@ -347,6 +379,16 @@ export default function Index() {
           </Card>
         </>
       )}
+      
+      {
+      <Card>
+        <div>
+          <h1>Main Component</h1>
+          <button onClick={togglePopup}>Generate Review Prompt</button>
+          {isPopupOpen && <Popup data={reviewPromptData} onClose={closePopup} />}
+        </div>
+      </Card>
+      }
 
       {isLoading ? (
         <Card>
@@ -370,7 +412,13 @@ export default function Index() {
             </Card>
           ))}
         </Card>
+      ) : actionResponse?.chunks ? (
+        <BlockStack>
+              {relevantChunks &&
+                chunksToReviews(relevantChunks)}
+            </BlockStack>
       ) : null}
+
     </Page>
   );
 }
