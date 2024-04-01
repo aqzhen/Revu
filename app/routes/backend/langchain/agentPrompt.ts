@@ -132,10 +132,11 @@ Then I can return the top most similar reviews in order of their similarity rank
 
 \nAction: query-sql
 \nAction Input:
-SELECT reviewId, chunkNumber
+SELECT Review.reviewId, Embeddings.chunkNumber
     DOT_PRODUCT(Embeddings.chunkEmbedding, SellerQuery.semanticEmbedding) AS similarity_score
 FROM Review
-CROSS JOIN (SELECT semanticEmbedding FROM SellerQueries WHERE queryId = 1234) AS SellerQuery
+CROSS JOIN (SELECT semanticEmbedding FROM Seller_Queries WHERE queryId = 1234) AS SellerQuery
+JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
 ORDER BY similarity_score DESC
 LIMIT 25;
 
