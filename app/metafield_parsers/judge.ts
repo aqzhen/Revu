@@ -1,4 +1,4 @@
-import { Review } from "../../globals";
+import { Review } from "../globals";
 
 export function parseReviewData(reviews: any) {
   return reviews.map((review: any) => ({

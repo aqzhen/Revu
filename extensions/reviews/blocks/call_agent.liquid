@@ -1,0 +1,62 @@
+<script>
+    const button = document.querySelector('#myButton');
+    button.addEventListener('click', async function(event) {
+        event.preventDefault();
+        const input = document.querySelector('#myInput');
+        const value = input.value;
+        console.log("Button clicked with value:", value);
+        const data = { query: value };
+
+        const response = await fetch('/apps/my_app/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        });
+
+        if (response.ok) {
+            const responseData = await response.json();
+            console.log("API response:", responseData);
+            // Parse the response data here
+            const prompt = responseData.prompt;
+            const sqlQuery = responseData.sqlQuery;
+            const result = responseData.result;
+            const error = responseData.error;
+            const output = responseData.output;
+
+            // Pass the data to Liquid
+            window.Shopify.Liquid.context.assign({
+                'prompt': prompt,
+                'sqlQuery': sqlQuery,
+                'result': result,
+                'error': error,
+                'output': output
+            });
+        } else {
+            console.error("API call failed with status:", response.status);
+        }
+    });
+</script>
+
+<div>
+    <input id="myInput" type="text" placeholder="Enter a query">
+    <button id="myButton">Call Agent</button>
+</div>
+
+<div>
+    <h2>Response Data:</h2>
+    <p>Prompt: {{ prompt }}</p>
+    <p>SQL Query: {{ sqlQuery }}</p>
+    <p>Result: {{ result }}</p>
+    <p>Error: {{ error }}</p>
+    <p>Output: {{ output }}</p>
+</div>
+
+{% schema %}
+{
+    "name": "Call Agent",
+    "target": "section",
+    "settings": []
+}
+{% endschema %}

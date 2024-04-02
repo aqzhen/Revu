@@ -1,7 +1,7 @@
 import fs from "fs";
 import mysql, { RowDataPacket } from "mysql2/promise";
 import OpenAI from "openai";
-import { Review } from "../../../globals";
+import { Review } from "../../globals";
 import { Chunk, chunk_string } from "../langchain/chunking";
 import { call_reviewPromptLLM } from "../langchain/reviewPromptLLM";
 
@@ -320,10 +320,10 @@ export async function addSellerQueryToSingleStore(
 export async function getReviewChunksInfo(
   reviewIDs: number[],
   chunkNumbers: number[],
-  ): Promise<{ chunks : Chunk[] }> {
-    try {
-      console.log("Getting review chunks", reviewIDs, chunkNumbers);
-      const chunks : Chunk[] = [];
+): Promise<{ chunks: Chunk[] }> {
+  try {
+    console.log("Getting review chunks", reviewIDs, chunkNumbers);
+    const chunks: Chunk[] = [];
     for (let i = 0; i < reviewIDs.length; i++) {
       const reviewID = reviewIDs[i];
       const chunkNumber = chunkNumbers[i];
@@ -335,16 +335,17 @@ export async function getReviewChunksInfo(
       );
       const body = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
         ?.body;
-      const startIndex = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
-        ?.startIndex;
+      const startIndex = JSON.parse(
+        JSON.stringify(results as RowDataPacket[]),
+      )[0]?.startIndex;
       const endIndex = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
         ?.endIndex;
-      let testChunk : Chunk = {
-        chunkBody : body,
-        startIndex : startIndex,
-        endIndex : endIndex,
-        reviewId : reviewID
-      }
+      let testChunk: Chunk = {
+        chunkBody: body,
+        startIndex: startIndex,
+        endIndex: endIndex,
+        reviewId: reviewID,
+      };
       chunks.push(testChunk);
     }
     return { chunks };
@@ -369,8 +370,9 @@ export async function getQueryInfo(
         [queryId],
       );
       const userId = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
+        ?.userId;
+      const query = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0]
         ?.query;
-      const query = JSON.parse(JSON.stringify(results as RowDataPacket[]))[0];
       userIds.push(userId);
       queries.push(query);
     }
@@ -393,14 +395,4 @@ async function generateEmbedding(body: string) {
     })
   ).data[0].embedding;
   return JSON.stringify(embedding);
-}
-
-export async function getReviewPromptData(
-
-): Promise<{ reviewPromptData : string[] }> {
-  console.log("I am here in the API");
-  let llmOutput = await call_reviewPromptLLM(1);
-  console.log("API has returned llm output here it is")
-  console.log(llmOutput);
-  return {reviewPromptData : [llmOutput]};
 }

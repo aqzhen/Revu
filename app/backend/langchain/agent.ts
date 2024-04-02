@@ -137,9 +137,9 @@ export async function call_agent(
           response.result = step.observation;
         }
       });
-      // console.log(
-      //   `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
-      // );
+      console.log(
+        `Intermediate steps ${JSON.stringify(result.intermediateSteps, null, 2)}`,
+      );
     }
 
     const llmOutput = await call_LLM(

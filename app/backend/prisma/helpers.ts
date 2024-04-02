@@ -1,5 +1,5 @@
-import prisma from "../../../db.server";
-import { Review } from "../../../globals";
+import prisma from "../../db.server";
+import { Review } from "../../globals";
 
 export async function addReviewsToDatabase(
   productId: number,

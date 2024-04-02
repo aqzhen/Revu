@@ -11,36 +11,31 @@ import {
   Card,
   DataTable,
   Page,
-  Spinner
+  Spinner,
 } from "@shopify/polaris";
 import { useEffect, useState } from "react";
 import { authenticate } from "../shopify.server";
-import { fetchJudgeReviews, getProducts } from "./backend/api_calls";
-import { parseReviewData } from "./metafield_parsers/judge";
+import { fetchJudgeReviews, getProducts } from "../backend/api_calls";
+import { parseReviewData } from "../metafield_parsers/judge";
 // import { addReviewsToDatabase } from "./backend/prisma/helpers";
 import { Review } from "../globals";
-import { call_agent, initialize_agent } from "./backend/langchain/agent";
-import { Chunk } from "./backend/langchain/chunking";
+import { call_agent, initialize_agent } from "../backend/langchain/agent";
+import { Chunk } from "../backend/langchain/chunking";
 import {
-  addChunksToSingleStore,
-  addReviewsToSingleStore,
   connectToSingleStore,
   createEmbeddingsTable,
   createQueriesTable,
   createReviewTable,
   createSellerQueriesTable,
-  getQueryInfo,
-  getReviewChunksInfo,
-  getReviewPromptData
-} from "./backend/vectordb/helpers";
-import Popup from "./frontend/components/Popup";
+} from "../backend/vectordb/helpers";
+import Popup from "../frontend/components/Popup";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   console.log("Connecting to SingleStore");
   const db = await connectToSingleStore();
-  
+
   createReviewTable(false);
   createQueriesTable(false);
   createEmbeddingsTable(false);
@@ -52,50 +47,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return getProducts(admin);
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const formData = await request.formData();
-  var apiQuery = formData.get("apiQuery") as string;
-  var productId = formData.get("productId") as string;
-  var reviews = formData.get("reviews") as string;
-  var agentQuery = formData.get("agentQuery") as string;
-  var userMode = formData.get("userMode") as string;
-  var chunkString = formData.get("chunkString") as string;
-  var reviewIds = formData.get("reviewIds") as string;
-  var chunkNumbers = formData.get("chunkNumbers") as string;
-  var queryIds = formData.get("queryIds") as string;
-  var tableToQuery = formData.get("tableToQuery") as string;
+export const action = async ({ request }: ActionFunctionArgs) => {};
 
-  if (apiQuery === "fetchJudgeReviews") {
-    return fetchJudgeReviews(productId);
-  } else if (apiQuery === "addReviewsToDatabase") {
-    addReviewsToSingleStore(Number(productId), JSON.parse(reviews || "[]"));
-    console.log("About to try to add chunks");
-    addChunksToSingleStore(JSON.parse(reviews || "[]"));
-    return null;
-  } else if (apiQuery === "callAgent") {
-    return call_agent(agentQuery, JSON.parse(userMode), tableToQuery);
-  } else if (apiQuery === "getReviewChunks") {
-    let get = await getReviewChunksInfo(
-      JSON.parse(reviewIds),
-      JSON.parse(chunkNumbers),
-    );
-    console.log("Result from getReviewChunksInfo", get)
-    return get;
-  } else if (apiQuery === "getQueriesForQuery") {
-    let get = await getQueryInfo(JSON.parse(queryIds));
-    return get;
-  } else if (apiQuery === "getReviewPromptData") {
-    let get = await getReviewPromptData();
-    return get;
-  }
-};
-
-function chunksToReviews(chunks : Chunk[]) {
+function chunksToReviews(chunks: Chunk[]) {
   return chunks.map((chunk: Chunk, index: number) => (
-    <Card key={index}>
-      {chunks[index] && <p>{chunks[index].chunkBody}</p>}
-    </Card>
-  ))
+    <Card key={index}>{chunks[index] && <p>{chunks[index].chunkBody}</p>}</Card>
+  ));
 }
 
 export default function Index() {
@@ -103,7 +60,7 @@ export default function Index() {
   var [selectedProduct, setSelectedProduct] = useState<number>();
   var [reviewListDetails, setReviewListDetails] = useState<Review[]>([]); // used to store the entire list of reviews for a product
   // var [chunkBodies, setChunkBodies] = useState<string[]>([]); // used to store the list of reviews returned on a query
-  var [queryInfo, setQueryInfo] = useState<string[]>([]); // used to store the list of queries returned on a query
+  var [queryInfo, setQueryInfo] = useState<string[]>([]); // used to store the list of queries returned on a query. TODO: change to Query type
   var [queryString, setQueryString] = useState<string>("");
   var [queryResponse, setQueryResponse] = useState<string>(); // this is the LLM output text answer
   var [queryResult, setQueryResult] = useState<string>(); // this is the sql query result (resultIds, etc..)
@@ -113,16 +70,12 @@ export default function Index() {
   var [reviewPromptData, setReviewPromptData] = useState<string[]>([]);
 
   const nav = useNavigation();
-  const actionResponse = useActionData<typeof action>() as any;
-  const submit = useSubmit();
   const isLoading =
     ["loading", "submitting"].includes(nav.state) && nav.formMethod === "POST";
 
   // calling api to get reviews for returned reviews/chunks after a query
   const reviewIds: number[] = [];
   const chunkNumbers: number[] = [];
-  const userIds: number[] = [];
-  const queries: string[] = [];
   const queryIds: number[] = [];
   useEffect(() => {
     if (queryResult) {
@@ -138,98 +91,134 @@ export default function Index() {
       } else if (parsedResult.length > 0 && parsedResult[0].queryId) {
         parsedResult.forEach((obj: any) => {
           queryIds.push(obj.queryId);
-          userIds.push(obj.userId);
-          queries.push(obj.query);
         });
-        getQueriesForQuery(queryIds, userIds, queries);
+        getQueriesForQuery(queryIds);
       }
     }
   }, [queryResult]);
 
-  useEffect(() => {
-    if (actionResponse && actionResponse?.reviews) {
-      var parsedData = parseReviewData(actionResponse?.reviews);
-      setReviewListDetails(parsedData);
-    } else if (actionResponse && actionResponse?.output) {
-      setQueryResponse(actionResponse?.output);
-      setQueryResult(actionResponse?.result);
-      setSqlQuery(actionResponse?.sqlQuery);
-    } else if (actionResponse && actionResponse?.chunks) {
-      // setChunkBodies(actionResponse?.bodies);
-      setRelevantChunks(actionResponse?.chunks);
-    } else if (actionResponse && actionResponse?.query) {
-      setQueryInfo(actionResponse?.query);
-    } else if (actionResponse && actionResponse?.reviewPromptData) {
-      setReviewPromptData(actionResponse?.reviewPromptData);
-    }
-  }, [actionResponse]);
-
   // trigger action to get reviews
   const initializeReviews = async (selectedProductId: Number) => {
-    await submit(
-      { apiQuery: "fetchJudgeReviews", productId: Number(selectedProductId) },
-      { replace: true, method: "POST" },
-    );
+    const requestData = {
+      productId: selectedProductId,
+    };
+    try {
+      const response = await fetch("/reviews/fetchAll", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      const data = await response.json();
+
+      // Handle the response from the API
+      var parsedData = parseReviewData(data.reviews);
+      setReviewListDetails(parsedData);
+    } catch (error) {
+      // Handle any errors
+      console.error(error);
+    }
   };
 
   const pushReviewsToDatabase = async (
     productId: number,
     reviews: Review[],
   ) => {
-    await submit(
-      {
-        apiQuery: "addReviewsToDatabase",
-        productId: productId,
-        reviews: JSON.stringify(reviews),
-      },
-      { replace: true, method: "POST" },
-    );
+    const requestData = {
+      productId: productId,
+      reviews: reviews,
+    };
+    try {
+      const response = await fetch("/reviews/pushToDatabase", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+    } catch (error) {
+      // Handle any errors
+      console.error(error);
+    }
   };
 
   const getReviewsForQuery = async (
     reviewIds: number[],
     chunkNumbers: number[],
   ) => {
-    await submit(
-      {
-        apiQuery: "getReviewChunks",
-        reviewIds: JSON.stringify(reviewIds),
-        chunkNumbers: JSON.stringify(chunkNumbers),
-      },
-      { replace: true, method: "POST" },
-    );
+    const requestData = {
+      reviewIds: reviewIds,
+      chunkNumbers: chunkNumbers,
+    };
+    try {
+      const response = await fetch("/reviews/getChunks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      const data = await response.json();
+
+      // Handle the response from the API
+      setRelevantChunks(data?.chunks);
+    } catch (error) {
+      // Handle any errors
+      console.error(error);
+    }
   };
 
-  const getQueriesForQuery = async (
-    queryIds: number[],
-    userIds: number[],
-    queries: string[],
-  ) => {
-    await submit(
-      {
-        apiQuery: "getQueriesForQuery",
-        queryIds: JSON.stringify(queryIds),
-        userIds: JSON.stringify(userIds),
-        queries: JSON.stringify(queries),
-      },
-      { replace: true, method: "POST" },
-    );
+  const getQueriesForQuery = async (queryIds: number[]) => {
+    const requestData = {
+      queryIds: queryIds,
+    };
+    try {
+      const response = await fetch("/queries/getReturnedQueries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      const data = await response.json();
+
+      // Handle the response from the API
+      setQueryInfo(data?.queries);
+    } catch (error) {
+      // Handle any errors
+      console.error(error);
+    }
   };
 
   const togglePopup = async () => {
     setIsPopupOpen(!isPopupOpen);
-    await submit(
-      {
-        apiQuery: "getReviewPromptData",
-      },
-      { replace: true, method: "POST" },
-    );
+    try {
+      const response = await fetch("/prompts/getReviewPromptData", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      // Handle the response from the API
+      setReviewPromptData(data?.reviewPromptData);
+    } catch (error) {
+      // Handle any errors
+      console.error(error);
+    }
   };
 
   const closePopup = () => {
     setIsPopupOpen(false); // Close the popup
     setReviewPromptData([]);
   };
+
   // PRODUCTS
   // get products data on load
   const productsData = useLoaderData<typeof loader>();
@@ -299,32 +288,62 @@ export default function Index() {
           onChange={(e) => setQueryString(e.target.value)}
         />
         <Button
-          onClick={() =>
-            submit(
-              {
-                apiQuery: "callAgent",
-                agentQuery: queryString,
-                userMode: userMode,
-                tableToQuery: "Review",
-              },
-              { replace: true, method: "POST" },
-            )
-          }
+          onClick={async () => {
+            const requestData = {
+              agentQuery: queryString,
+              userMode: userMode,
+              tableToQuery: "Review",
+            };
+            try {
+              const response = await fetch("/agent", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestData),
+              });
+
+              const data = await response.json();
+
+              // Handle the response from the /agent API
+              setQueryResponse(data?.output);
+              setQueryResult(data?.result);
+              setSqlQuery(data?.sqlQuery);
+            } catch (error) {
+              // Handle any errors
+              console.error(error);
+            }
+          }}
         >
           Query Reviews
         </Button>
         <Button
-          onClick={() =>
-            submit(
-              {
-                apiQuery: "callAgent",
-                agentQuery: queryString,
-                userMode: userMode,
-                tableToQuery: "Queries",
-              },
-              { replace: true, method: "POST" },
-            )
-          }
+          onClick={async () => {
+            const requestData = {
+              agentQuery: queryString,
+              userMode: userMode,
+              tableToQuery: "Query",
+            };
+            try {
+              const response = await fetch("/agent", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestData),
+              });
+
+              const data = await response.json();
+
+              // Handle the response from the /agent API
+              setQueryResponse(data?.output);
+              setQueryResult(data?.result);
+              setSqlQuery(data?.sqlQuery);
+            } catch (error) {
+              // Handle any errors
+              console.error(error);
+            }
+          }}
         >
           Query Past Queries
         </Button>
@@ -360,13 +379,15 @@ export default function Index() {
               {queryResult &&
                 JSON.parse(queryResult).map((obj: any, index: number) => (
                   <Card key={index}>
-                    {obj.similarity_score > 0.5 ? (
+                    {obj.similarity_score > 0.45 ? (
                       <strong>{JSON.stringify(obj)}</strong>
                     ) : (
                       JSON.stringify(obj)
                     )}
 
-                    {relevantChunks[index] && <p>{relevantChunks[index].chunkBody}</p>}
+                    {relevantChunks[index] && (
+                      <p>{relevantChunks[index].chunkBody}</p>
+                    )}
                     {queryInfo && <p>{queryInfo[index]}</p>}
                   </Card>
                 ))}
@@ -379,15 +400,17 @@ export default function Index() {
           </Card>
         </>
       )}
-      
+
       {
-      <Card>
-        <div>
-          <h1>Main Component</h1>
-          <button onClick={togglePopup}>Generate Review Prompt</button>
-          {isPopupOpen && <Popup data={reviewPromptData} onClose={closePopup} />}
-        </div>
-      </Card>
+        <Card>
+          <div>
+            <h1>Main Component</h1>
+            <button onClick={togglePopup}>Generate Review Prompt</button>
+            {isPopupOpen && (
+              <Popup data={reviewPromptData} onClose={closePopup} />
+            )}
+          </div>
+        </Card>
       }
 
       {isLoading ? (
@@ -395,7 +418,7 @@ export default function Index() {
           <Spinner size="small" />
           <p>Loading...</p>
         </Card>
-      ) : actionResponse?.reviews ? (
+      ) : reviewListDetails ? (
         <Card>
           <p>Reviews:</p>
           {reviewListDetails.map((review, index) => (
@@ -412,13 +435,11 @@ export default function Index() {
             </Card>
           ))}
         </Card>
-      ) : actionResponse?.chunks ? (
+      ) : relevantChunks ? (
         <BlockStack>
-              {relevantChunks &&
-                chunksToReviews(relevantChunks)}
-            </BlockStack>
+          {relevantChunks && chunksToReviews(relevantChunks)}
+        </BlockStack>
       ) : null}
-
     </Page>
   );
 }
