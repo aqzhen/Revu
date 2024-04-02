@@ -1,3 +1,22 @@
+<div>
+    <input id="myInput" type="text" placeholder="Enter a query">
+    <button id="myButton">Call Agent</button>
+</div>
+
+<div>
+    <h2>Response Data:</h2>
+    <p id="prompt"></p>
+    <p id="sqlQuery"></p>
+    <p id="result"></p>
+    <p id="error"></p>
+    <p id="output"></p>
+</div>
+
+<script>
+
+</script>
+
+
 <script>
     const button = document.querySelector('#myButton');
     button.addEventListener('click', async function(event) {
@@ -5,9 +24,9 @@
         const input = document.querySelector('#myInput');
         const value = input.value;
         console.log("Button clicked with value:", value);
-        const data = { query: value };
+        const data = { agentQuery: value, userMode: false, tableToQuery: "Review" };
 
-        const response = await fetch('/apps/my_app/', {
+        const response = await fetch('/apps/my_app/agent', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -25,33 +44,23 @@
             const error = responseData.error;
             const output = responseData.output;
 
-            // Pass the data to Liquid
-            window.Shopify.Liquid.context.assign({
-                'prompt': prompt,
-                'sqlQuery': sqlQuery,
-                'result': result,
-                'error': error,
-                'output': output
-            });
+            // Pass the data to frontend
+            const promptElement = document.querySelector('#prompt');
+            const sqlQueryElement = document.querySelector('#sqlQuery');
+            const resultElement = document.querySelector('#result');
+            const errorElement = document.querySelector('#error');
+            const outputElement = document.querySelector('#output');
+
+            promptElement.innerHTML = prompt;
+            sqlQueryElement.innerHTML = sqlQuery;
+            resultElement.innerHTML = result;
+            errorElement.innerHTML = error;
+            outputElement.innerHTML = output;
         } else {
             console.error("API call failed with status:", response.status);
         }
     });
 </script>
-
-<div>
-    <input id="myInput" type="text" placeholder="Enter a query">
-    <button id="myButton">Call Agent</button>
-</div>
-
-<div>
-    <h2>Response Data:</h2>
-    <p>Prompt: {{ prompt }}</p>
-    <p>SQL Query: {{ sqlQuery }}</p>
-    <p>Result: {{ result }}</p>
-    <p>Error: {{ error }}</p>
-    <p>Output: {{ output }}</p>
-</div>
 
 {% schema %}
 {
