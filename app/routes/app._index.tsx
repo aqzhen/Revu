@@ -1,9 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import {
-  useActionData,
   useLoaderData,
-  useNavigation,
-  useSubmit,
+  useNavigation
 } from "@remix-run/react";
 import {
   BlockStack,
@@ -14,21 +12,22 @@ import {
   Spinner,
 } from "@shopify/polaris";
 import { useEffect, useState } from "react";
-import { authenticate } from "../shopify.server";
-import { fetchJudgeReviews, getProducts } from "../backend/api_calls";
+import { getProducts } from "../backend/api_calls";
 import { parseReviewData } from "../metafield_parsers/judge";
+import { authenticate } from "../shopify.server";
 // import { addReviewsToDatabase } from "./backend/prisma/helpers";
-import { Review } from "../globals";
-import { call_agent, initialize_agent } from "../backend/langchain/agent";
+import { initialize_agent } from "../backend/langchain/agent";
 import { Chunk } from "../backend/langchain/chunking";
 import {
   connectToSingleStore,
   createEmbeddingsTable,
+  createPurchasesTable,
   createQueriesTable,
   createReviewTable,
-  createSellerQueriesTable,
+  createSellerQueriesTable
 } from "../backend/vectordb/helpers";
 import Popup from "../frontend/components/Popup";
+import { Review } from "../globals";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -40,8 +39,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   createQueriesTable(false);
   createEmbeddingsTable(false);
   createSellerQueriesTable(false);
+  createPurchasesTable(false);
 
   await initialize_agent();
+  // await call_sellSideInsightsLLM(9064572584236);
 
   console.log("Loading products");
   return getProducts(admin);
@@ -68,6 +69,7 @@ export default function Index() {
   var [relevantChunks, setRelevantChunks] = useState<Chunk[]>([]);
   var [isPopupOpen, setIsPopupOpen] = useState(false);
   var [reviewPromptData, setReviewPromptData] = useState<string[]>([]);
+  var [sellSideInsights, setSellSideInsights] = useState<string>("");
 
   const nav = useNavigation();
   const isLoading =
@@ -400,6 +402,32 @@ export default function Index() {
           </Card>
         </>
       )}
+
+      {
+        <Card>
+          <Button
+            onClick={async () => {
+              try {
+                const response = await fetch("/agent/sellSide", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify(selectedProduct),
+                });
+                const data = await response.json();
+                setSellSideInsights(data);
+              } catch (error) {
+                // Handle any errors
+                console.error(error);
+              }
+            }}
+          >
+          Get Sell Side Insights
+          </Button>
+          { sellSideInsights }
+        </Card>
+      }
 
       {
         <Card>

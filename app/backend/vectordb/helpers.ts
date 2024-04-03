@@ -3,7 +3,6 @@ import mysql, { RowDataPacket } from "mysql2/promise";
 import OpenAI from "openai";
 import { Review } from "../../globals";
 import { Chunk, chunk_string } from "../langchain/chunking";
-import { call_reviewPromptLLM } from "../langchain/reviewPromptLLM";
 
 let singleStoreConnection: mysql.Connection;
 export async function connectToSingleStore() {
@@ -136,6 +135,28 @@ export async function createEmbeddingsTable(deleteExistingReviews: boolean) {
   }
 }
 
+export async function createPurchasesTable(deleteExistingReviews: boolean) {
+  try {
+    if (deleteExistingReviews) {
+      console.log("Dropping purchases table");
+
+      await singleStoreConnection.execute("DROP TABLE IF EXISTS Purchases");
+    }
+    await singleStoreConnection.execute(`
+                CREATE TABLE Purchases (
+                    userId BIGINT,
+                    productId BIGINT,
+                    purchased BOOL,
+                    quantity int,
+                    PRIMARY KEY (userId, productId)
+                )
+            `);
+    console.log("Purchases table created successfully.");
+  } catch (err) {
+    console.log("Purchases table already exists");
+  }
+}
+
 // Adders
 export async function addChunksToSingleStore(reviews: Review[]): Promise<void> {
   for (const review of reviews) {
@@ -230,6 +251,21 @@ export async function addQueryToSingleStore(
   query: string,
 ): Promise<void> {
   try {
+    await singleStoreConnection.execute(
+      `
+        INSERT IGNORE INTO Purchases (
+            userId,
+            productId,
+            purchased,
+            quantity
+        ) VALUES (
+            ${userId},
+            ${productId},
+            0,
+            0
+        )
+        `
+    );
     const [results, buff] = await singleStoreConnection.execute(
       `
         INSERT INTO Queries (
