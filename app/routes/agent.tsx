@@ -12,6 +12,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const body = await request.json();
-  const { agentQuery, userMode, tableToQuery } = body;
-  return call_agent(agentQuery, JSON.parse(userMode), tableToQuery);
+  const { customerId, productId, agentQuery, userMode, tableToQuery } = body;
+  return call_agent(
+    customerId,
+    productId,
+    agentQuery,
+    JSON.parse(userMode),
+    tableToQuery,
+  );
 };

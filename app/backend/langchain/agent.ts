@@ -76,6 +76,8 @@ export async function initialize_agent() {
 }
 
 export async function call_agent(
+  customerId: number = -1,
+  productId: number = -1,
   query: string,
   isSeller: boolean = false,
   tableToQuery: string,
@@ -94,11 +96,16 @@ export async function call_agent(
     let queryId;
     let sellerQueryId;
     if (!isSeller) {
-      queryId = await addQueryToSingleStore(1, 1, "TEST ANSWER", query);
+      queryId = await addQueryToSingleStore(
+        productId,
+        customerId,
+        "TEST ANSWER",
+        query,
+      );
     } else {
       sellerQueryId = await addSellerQueryToSingleStore(
-        1,
-        2,
+        productId,
+        customerId,
         "TEST ANSWER",
         query,
       );

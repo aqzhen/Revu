@@ -19,12 +19,15 @@
 
 <script>
     const button = document.querySelector('#myButton');
+    const customerId = {{customer.id | json}};
+    const productId = {{product.id | json}};
     button.addEventListener('click', async function(event) {
         event.preventDefault();
         const input = document.querySelector('#myInput');
         const value = input.value;
         console.log("Button clicked with value:", value);
-        const data = { agentQuery: value, userMode: false, tableToQuery: "Review" };
+       
+        const data = { customerId: customerId, productId: productId, agentQuery: value, userMode: false, tableToQuery: "Review" };
 
         const response = await fetch('/apps/my_app/agent', {
             method: 'POST',
