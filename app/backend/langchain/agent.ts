@@ -122,7 +122,9 @@ export async function call_agent(
           ". Query the " +
           tableToQuery +
           " table. " +
-          query,
+          query +
+          "for productId " +
+          productId,
       });
     } else if (sellerQueryId !== undefined) {
       result = await executor.invoke({
@@ -132,7 +134,9 @@ export async function call_agent(
           ". Query the " +
           tableToQuery +
           " table. " +
-          query,
+          query +
+          "for productId " +
+          productId,
       });
     }
 

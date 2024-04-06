@@ -39,14 +39,14 @@ export async function call_LLM(
       llmOutput = "No semantically similar reviews found.";
     } else {
       const reviewBodies = await db.run(
-        `SELECT reviewId, body FROM Review WHERE reviewId IN (${reviewIdsString})`,
+        `SELECT reviewId, body, reviewerExternalId FROM Review WHERE reviewId IN (${reviewIdsString})`,
       );
 
       console.log(reviewBodies);
 
       llmOutput = (
         await llm.invoke(
-          "Using the following reviews, answer this query, referencing the reviewID where you get your evidence from. You must reference every reviewID: " +
+          "Using the following reviews, answer this query, referencing the reviewID where you get your evidence from. You must reference every reviewID. If the original query referenced returning users, you must reference every reviewerExternalId:  " +
             query +
             "\n" +
             reviewBodies,
