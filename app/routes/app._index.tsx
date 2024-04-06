@@ -6,9 +6,7 @@ import {
   Card,
   DataTable,
   Page,
-  ResourceList,
-  Spinner,
-  Tabs,
+  Tabs
 } from "@shopify/polaris";
 import { useCallback, useEffect, useState } from "react";
 import { getProducts } from "../backend/api_calls";
@@ -23,11 +21,10 @@ import {
   createPurchasesTable,
   createQueriesTable,
   createReviewTable,
-  createSellerQueriesTable,
-  updatePurchasedStatus,
+  createSellerQueriesTable
 } from "../backend/vectordb/helpers";
 import Popup from "../frontend/components/Popup";
-import { Review, Query } from "../globals";
+import { Query, Review } from "../globals";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
