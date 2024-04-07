@@ -28,24 +28,23 @@ import { Query, Review } from "../globals";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
+  global.admin = admin;
 
   console.log("Connecting to SingleStore");
   const db = await connectToSingleStore();
 
-  createReviewTable(false);
-  createQueriesTable(false);
-  ``;
-  createEmbeddingsTable(false);
-  createSellerQueriesTable(false);
-  createPurchasesTable(false);
+  await createReviewTable(false);
+  await createQueriesTable(false);
+  await createEmbeddingsTable(false);
+  await createSellerQueriesTable(false);
+  await createPurchasesTable(false);
 
-  // updatePurchasedStatus(admin);
+  await updatePurchasedStatus();
 
   await initialize_agent();
-  // await call_sellSideInsightsLLM(9064572584236);
 
   console.log("Loading products");
-  return getProducts(admin);
+  return getProducts();
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {};

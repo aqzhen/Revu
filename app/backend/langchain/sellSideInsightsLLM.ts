@@ -3,6 +3,7 @@ import fs from "fs";
 import { SqlDatabase } from "langchain/sql_db";
 import { DataSource } from "typeorm";
 import { Query, Review } from "~/globals";
+import { getProductDescription } from "../api_calls";
 
 export async function call_windowShoppersInsightsLLM(productId: number) {
   // parse result to perform additional queries and LLM calls
@@ -51,6 +52,9 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
       };
     });
 
+    // Getting product description
+    const productDescription = await getProductDescription(productId);
+
     llmOutput = (
       await llm.invoke(
         `You are given the following queries that a user has made on a product. These users have not
@@ -67,7 +71,9 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
         user id, query id, and query which falls under the category. Your output should always follows this JSON format:
         
         For each category, output a small, digestable summary of the category and what the users' queries in this category mean.
-        Also, provide 1 suggestion for how the seller could better cater to this category of users.
+        Also, provide 1 suggestion for how the seller could better cater to this category of users. In addition, you are 
+        provided the product description provided by the seller. Provide suggestions on how to improve 
+        the product description so as to better capture customers who are making queries in each category. 
 
         EXAMPLE: \n
         
@@ -77,7 +83,9 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
         Summary: xxxx\n
         Suggestion(s): xxxx` +
           "\n" +
-          userQueries,
+          userQueries +
+          ". Product Description: " +
+          productDescription,
       )
     ).content;
 
@@ -140,7 +148,7 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
     console.log(queryList);
     if (queryList.length === 0) {
       console.log("here");
-      return "There are no queries yet!"
+      return "There are no queries yet!";
     }
 
     const userReviews = await db.run(
@@ -170,15 +178,17 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
       };
     });
 
+    const productDescription = await getProductDescription(productId);
+
     llmOutput = (
       await llm.invoke(
-        `You are given the following queries that a user has made on a product, in addition to the reviews that they left on the product. You should synthesize these queries into an appropriate amount (1-5) 
-        categories of what these users were looking for in the product when querying. For each category,
-        output the specific queries, queryIds, and userIds that contributed to the category. Correspondingly, you should discuss how the content within the reviews address the categories and ideas brought up in the queries. Then, include a small summary of this data that is digestable for the seller. Provide 3 potential suggestions to
-        improve their product in order to cater to these users and specific queries.` +
+        `You are given the following queries that a user has made on a product, in addition to the reviews that they left on the product. You should synthesize these queries into an appropriate amount (1-5) categories of what these users were looking for in the product when querying. For each category, output the specific queries, queryIds, and userIds that contributed to the category. Correspondingly, you should discuss how the content within the reviews address the categories and ideas brought up in the queries. Then, include a small summary of this data that is digestable for the seller. Provide 3 potential suggestions to improve their product in order to cater to these users and specific queries. In addition, you are provided the product description provided by the seller. Provide suggestions on how to improve 
+        the product description so as to better capture customers who are making queries and leaving reviews in each category.` +
           "\n" +
           userQueries +
-          userReviews,
+          userReviews +
+          ". Product Description: " +
+          productDescription,
       )
     ).content;
 

@@ -353,7 +353,7 @@ export async function addSellerQueryToSingleStore(
   }
 }
 
-export async function updatePurchasedStatus(admin: any) {
+export async function updatePurchasedStatus() {
   try {
     const [results, buff] = await singleStoreConnection.execute(
       `
@@ -375,7 +375,7 @@ export async function updatePurchasedStatus(admin: any) {
       let userId = userIds[i];
       let productId = productIds[i];
       let purchasedProducts = await (
-        await getCustomerProductPurchases(userId, admin)
+        await getCustomerProductPurchases(userId)
       ).json();
 
       console.log(

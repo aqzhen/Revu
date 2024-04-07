@@ -140,6 +140,7 @@ export async function call_agent(
       });
     }
 
+    // TODO: Figure out if we can save tokens here by not returning all intermediate steps
     if (result) {
       result.intermediateSteps.forEach((step: any) => {
         if (step.action.tool === "query-sql") {

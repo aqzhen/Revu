@@ -18,3 +18,7 @@ export type Query = {
   query: string;
   userId: number;
 };
+
+declare global {
+  var admin: any;
+}
