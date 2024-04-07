@@ -3,7 +3,7 @@ import fs from "fs";
 import { SqlDatabase } from "langchain/sql_db";
 import { DataSource } from "typeorm";
 
-export async function call_reviewPromptLLM(userId: number): Promise<string> {
+export async function call_reviewPromptLLM(userId: string): Promise<string> {
   // parse result to perform additional queries and LLM calls
   // if results has reviewIds and similarity_score, then we perform query to grab bodies and feed into LLM
   let llmOutput;
@@ -28,6 +28,7 @@ export async function call_reviewPromptLLM(userId: number): Promise<string> {
       appDataSource: dataSource,
     });
 
+    console.log("Generating review prompt for user id: ?", userId);
     const userQueries = await db.run(
       `SELECT queryId, query FROM Queries WHERE userId = ${userId}`,
     );
@@ -74,12 +75,21 @@ export async function call_reviewPromptLLM(userId: number): Promise<string> {
   }
 }
 
-export async function getReviewPromptData(): Promise<{
-  reviewPromptData: string[];
+export async function getReviewPromptData(userIds: string[]): Promise<{
+  reviewPromptData: any[];
 }> {
-  console.log("I am here in the API");
-  let llmOutput = await call_reviewPromptLLM(7990795632940);
-  console.log("API has returned llm output here it is");
-  console.log(llmOutput);
-  return { reviewPromptData: [llmOutput] };
+  const promises = userIds.map(async (userId) => {
+    console.log("about to generate for ", userId);
+    const llmOutput = await call_reviewPromptLLM(userId);
+    console.log("This is what I got", llmOutput);
+    return {
+      userId: userId,
+      reviewPrompt: llmOutput
+    };
+  });
+
+  const output = await Promise.all(promises);
+  console.log(output);
+  console.log("HIDSFLKDHFLKSDJFLKSDJLF");
+  return { reviewPromptData: output };
 }

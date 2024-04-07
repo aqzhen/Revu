@@ -69,10 +69,11 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
         YOU SHOULD USE EVERY SINGLE QUERY in some category. IF A QUERY DOES NOT FALL UNDER A SPECIFIC CATEGORY, you can include in a 
         category called "UNCATEGORIZED"\n
         
-        Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.
-        Also, provide 1 suggestion for how the seller could better cater to this category of users. This suggestion should
-        pertain to the given product description and be a CONCRETE CHANGE that could be made to the description to better cater to the 
-        category of users.
+        Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.\n
+        
+        IMPORTANT: Provide 1 suggestion for how the seller should change their product description to better cater to this category
+        of users. YOU MUST specifically point out what is lacking in the current product description and then provide a better
+        alternative or addition. BE SPECIFIC AND USE THE PRODUCT DESCRIPTION GIVEN TO YOU. YOU MUST REFERENCE SOMETHING SPECIFIC FROM THE PRODUCT DESCRIPTION!!!!!\n
 
         IMPORTANT: You must format your output as a JSON value that adheres to a given "JSON Schema" instance.
 
@@ -272,10 +273,11 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
 
     llmOutput = (
       await llm.invoke(
-        `
-        You are given the following queries that a user has made on a product, in addition to the reviews that they left on the product.
-        These users have purchased the product. \n FIRST, you should analyze these queries and come up with an appropriate amount (1-5) of
-        categories which uniquely describe what the users were looking for in the product when querying. Then, you should discuss how the content within the reviews address the categories and ideas brought up in the queries. Then, include a small summary of this data that is digestable for the seller. \n
+        `You are given the following queries that a user has made on a product. These users have
+        purchased the product. \n 
+        
+        FIRST, you should analyze these queries and come up with an appropriate amount (1-5) of
+        categories which uniquely describe what the users were looking for in the product when querying. \n
         
         DO NOT make up categories that are not relevant to the specific queries from the users. THE only thing you should use in 
         making the categories is the specific queries from the users. 
@@ -283,24 +285,73 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
         YOU SHOULD USE EVERY SINGLE QUERY in some category. IF A QUERY DOES NOT FALL UNDER A SPECIFIC CATEGORY, you can include in a 
         category called "UNCATEGORIZED"\n
         
-        For each category/bucket that you make, output the title of the category first. Then, output in row form every single
-        user id, query id, and query which falls under the category. Your output should always follows this JSON format:
+        Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.\n
         
-        For each category, output a small, digestable summary of the category and what the users' queries in this category mean.
+        IMPORTANT: Provide 1 suggestion for how the seller should change their product description to better cater to this category
+        of users. YOU MUST specifically point out what is lacking in the current product description and then provide a better
+        alternative or addition. BE SPECIFIC AND USE THE PRODUCT DESCRIPTION GIVEN TO YOU. YOU MUST REFERENCE SOMETHING SPECIFIC FROM THE PRODUCT DESCRIPTION!!!!!\n
 
-        Also, provide 1 suggestion for how the seller could better cater to this category of users. This suggestion should use 
-        the given product description and provide CONCRETE and simple changes. In addition, you are 
-        provided the product description provided by the seller. Provide suggestions on how to improve 
-        the product description so as to better capture customers who are making queries and reviews in each category. 
+        IMPORTANT: You must format your output as a JSON value that adheres to a given "JSON Schema" instance.
 
-        EXAMPLE: \n
-        
-        Category 1 Name \n
-        UserId: xxxx, QueryId: xxxx, Query: abcd\n
-        UserId: xxxx, QueryId: xxxx, Query: abcd \n
-        Summary of Category: xxxx\n 
-        Summary of Query/Review Match: xxxx\n
-        Suggestion(s): xxxx ` +
+      "JSON Schema" is a declarative language that allows you to annotate and validate JSON documents.
+
+      For example, the example "JSON Schema" instance {{"properties": {{"foo": {{"description": "a list of test words", "type": "array", "items": {{"type": "string"}}}}}}, "required": ["foo"]}}}}
+      would match an object with one required property, "foo". The "type" property specifies "foo" must be an "array", and the "description" property semantically describes it as "a list of test words". The items within "foo" must be strings.
+      Thus, the object {{"foo": ["bar", "baz"]}} is a well-formatted instance of this example "JSON Schema". The object {{"properties": {{"foo": ["bar", "baz"]}}}} is not well-formatted.
+
+      Your output will be parsed and type-checked according to the provided schema instance, so make sure all fields in your output match the schema exactly and there are no trailing commas!
+
+      Here is the JSON Schema instance your output must adhere to. Include the enclosing markdown codeblock:
+
+      DO NOT INCLUDE anything other that the json output. DO NOT INCLUDE the word 'json' at the start of your output or any QUOTES.
+
+      {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "category": {
+              "type": "string",
+              "description": "Represents the category of the query"
+            },
+            "queries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "userId": {
+                    "type": "string",
+                    "description": "Represents the userId of the user who made this query"
+                  },
+                  "queryId": {
+                    "type": "string",
+                    "description": "Represents the queryId of this query"
+                  },
+                  "query": {
+                    "type": "string",
+                    "description": "Represents the body of this query"
+                  }
+                },
+                "required": ["userId", "queryId", "query"],
+                "additionalProperties": false
+              },
+              "description": "Array of queries"
+            },
+            "summary": {
+              "type": "string",
+              "description": "Represents the summary of the queries"
+            },
+            "suggestions": {
+              "type": "string",
+              "description": "Represents suggestions related to the queries"
+            }
+          },
+          "required": ["category", "queries", "summary", "suggestions"],
+          "additionalProperties": false
+        }
+      }      
+      ` +
           "\n" +
           userQueries +
           userReviews +
@@ -309,14 +360,44 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
       )
     ).content;
 
-    console.log("in sell side llm and printing llm output");
-    console.log(llmOutput as string);
+    let llmOutputString = llmOutput as string
+    // console.log(llmOutputString);
 
-    return {
-      llmOutput: llmOutput as string,
-      userQueries: queryList,
-      userReviews: reviewList,
-    };
+    const startIndex = llmOutputString.indexOf('[');
+    const endIndex = llmOutputString.lastIndexOf(']');
+    llmOutputString = llmOutputString.substring(startIndex, endIndex+1);
+
+    const response = JSON.parse(llmOutputString as string);
+    // console.log("JSON response");
+    // console.log(response);
+
+    const categories : Category[] = [];
+    response.forEach((element: { category: any; summary: any; suggestions: any; queries: { queryId: any; query: any; userId: any; }[]; }) => {
+      let name = element.category;
+      let summary = element.summary;
+      let suggestions = element.suggestions;
+      let queries : Query[] = []
+      element.queries.forEach((query: { queryId: any; query: any; userId: any; }) => {
+        let q : Query = {
+          queryId: query.queryId,
+          query: query.query,
+          userId: query.userId,
+        }
+        queries.push(q);
+      });
+      
+      let c : Category = {
+        category: name,
+        queries: queries,
+        summary: summary,
+        suggestions: suggestions
+      }
+      categories.push(c);
+    });
+
+    console.log(categories);
+  
+    return { categories: response };
   } catch (err) {
     console.error("ERROR", err);
     return "ERROR";
