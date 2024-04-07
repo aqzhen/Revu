@@ -8,9 +8,9 @@ import {
   Page,
   Tabs,
 } from "@shopify/polaris";
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 import { getProducts } from "../backend/api_calls";
-import { parseReviewData } from "../metafield_parsers/judge";
+import { parseReviewsData } from "../metafield_parsers/judge";
 import { authenticate } from "../shopify.server";
 // import { addReviewsToDatabase } from "./backend/prisma/helpers";
 import { initialize_agent } from "../backend/langchain/agent";
@@ -69,6 +69,9 @@ export default function Index() {
   var [reviewListDetails, setReviewListDetails] = useState<Review[]>([]); // used to store the entire list of reviews for a product
   // var [chunkBodies, setChunkBodies] = useState<string[]>([]); // used to store the list of reviews returned on a query
 
+  // Queries
+  var [queriesListDetails, setQueriesListDetails] = useState<Query[]>([]); // used to store the entire list of queries for a product
+
   // Agent Calls
   var [resultQueries, setResultQueries] = useState<string[]>([]); // used to store the list of queries returned on a query. TODO: change to Query type
   var [resultChunks, setResultChunks] = useState<Chunk[]>([]);
@@ -124,6 +127,11 @@ export default function Index() {
       content: "Reviews",
       panelID: "reviews-content-1",
     },
+    {
+      id: "queries-1",
+      content: "Queries",
+      panelID: "queries-content-1",
+    },
   ];
 
   // calling api to get reviews for returned reviews/chunks after a query
@@ -167,8 +175,31 @@ export default function Index() {
       const data = await response.json();
 
       // Handle the response from the API
-      var parsedData = parseReviewData(data.reviews);
+      var parsedData = parseReviewsData(data.reviews);
       setReviewListDetails(parsedData);
+    } catch (error) {
+      // Handle any errors
+      console.error(error);
+    }
+  };
+
+  const initializeQueries = async (selectedProductId: Number) => {
+    const requestData = {
+      productId: selectedProductId,
+    };
+    try {
+      const response = await fetch("/queries/fetchAll", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      const data = await response.json();
+
+      // Handle the response from the API
+      setQueriesListDetails(data.queries);
     } catch (error) {
       // Handle any errors
       console.error(error);
@@ -293,27 +324,12 @@ export default function Index() {
     var trimmed_id = productId.replace("gid://shopify/Product/", "");
     setSelectedProduct(Number(trimmed_id));
     initializeReviews(Number(trimmed_id));
+    initializeQueries(Number(trimmed_id));
   };
 
   return (
     <Page>
       <Tabs tabs={tabs} selected={selectedTab} onSelect={handleTabChange}>
-        <Card>
-          <p>Selected Product ID: {selectedProduct}</p>
-          {
-            <>
-              <Button
-                onClick={() =>
-                  selectedProduct &&
-                  reviewListDetails.length != 0 &&
-                  pushReviewsToDatabase(selectedProduct, reviewListDetails)
-                }
-              >
-                Add Reviews to Database
-              </Button>
-            </>
-          }
-        </Card>
         <Card>
           {selectedTab === 0 && (
             <>
@@ -343,29 +359,45 @@ export default function Index() {
               >
                 Get Insights
               </Button>
-              {windowCategories && windowCategories.map((category) => (
-                <Card>
-                  {
-                    <div key={category.category}>
-                      <h1 style={{ 
-          fontFamily: 'Arial, sans-serif', 
-          color: '#0077b6',
-          fontSize: 16 
-        }}> <strong>Category:</strong> {category.category} </h1>
-                      <p> <strong>Summary:</strong> {category.summary} </p>
-                      <p> <strong>Suggestions:</strong> {category.suggestions}</p>
-                      <details>
-                        <summary> See Relevant Queries </summary>
-                        {category.queries.map((query) => 
-                          <div key={query.queryId}>
-                            <p> <strong>Query: </strong> {query.query} (Query ID: {query.queryId}, User ID: {query.userId})</p>
-                          </div>
-                        )}
-                      </details>
-                    </div>
-                  }
-                </Card>
-              ))}
+              {windowCategories &&
+                windowCategories.map((category) => (
+                  <Card>
+                    {
+                      <div key={category.category}>
+                        <h1
+                          style={{
+                            fontFamily: "Arial, sans-serif",
+                            color: "#0077b6",
+                            fontSize: 16,
+                          }}
+                        >
+                          {" "}
+                          <strong>Category:</strong> {category.category}{" "}
+                        </h1>
+                        <p>
+                          {" "}
+                          <strong>Summary:</strong> {category.summary}{" "}
+                        </p>
+                        <p>
+                          {" "}
+                          <strong>Suggestions:</strong> {category.suggestions}
+                        </p>
+                        <details>
+                          <summary> See Relevant Queries </summary>
+                          {category.queries.map((query) => (
+                            <div key={query.queryId}>
+                              <p>
+                                {" "}
+                                <strong>Query: </strong> {query.query} (Query
+                                ID: {query.queryId}, User ID: {query.userId})
+                              </p>
+                            </div>
+                          ))}
+                        </details>
+                      </div>
+                    }
+                  </Card>
+                ))}
             </>
           )}
           {selectedTab === 1 && (
@@ -399,52 +431,67 @@ export default function Index() {
                 >
                   Get Insights
                 </Button>
-                {purchasingCustomersQueries && [
-                  ...new Set(
-                    purchasingCustomersQueries.map((query) => query.userId),
-                  ),
-                ].map((userId) => (
-                  <Card key={userId}>
-                    <details>
-                      <summary>User ID: {userId}</summary>
-                      {purchasingCustomersQueries && purchasingCustomersQueries
-                        .filter((query) => query.userId === userId)
-                        .map((query) => (
-                          <div key={query.queryId}>
-                            <p>
-                              <strong>Query ID</strong>: {query.queryId}
-                            </p>
-                            <p>
-                              <strong>Query</strong>: {query.query}
-                            </p>
-                            <br />
-                          </div>
-                        ))}
+                {purchasingCustomersQueries &&
+                  [
+                    ...new Set(
+                      purchasingCustomersQueries.map((query) => query.userId),
+                    ),
+                  ].map((userId) => (
+                    <Card key={userId}>
+                      <details>
+                        <summary>User ID: {userId}</summary>
+                        {purchasingCustomersQueries &&
+                          purchasingCustomersQueries
+                            .filter((query) => query.userId === userId)
+                            .map((query) => (
+                              <div key={query.queryId}>
+                                <p>
+                                  <strong>Query ID</strong>: {query.queryId}
+                                </p>
+                                <p>
+                                  <strong>Query</strong>: {query.query}
+                                </p>
+                                <br />
+                              </div>
+                            ))}
 
-                      {purchasingCustomersReviews && purchasingCustomersReviews
-                        .filter(
-                          (review) => review.reviewerExternalId === userId,
-                        )
-                        .map((review) => (
-                          <div key={review.reviewId}>
-                            <p>
-                              <strong>Review ID</strong>: {review.reviewId}
-                            </p>
-                            <p>
-                              <strong>Review</strong>: {review.body}
-                            </p>
-                            <br />
-                          </div>
-                        ))}
-                    </details>
-                  </Card>
-                ))}
+                        {purchasingCustomersReviews &&
+                          purchasingCustomersReviews
+                            .filter(
+                              (review) => review.reviewerExternalId === userId,
+                            )
+                            .map((review) => (
+                              <div key={review.reviewId}>
+                                <p>
+                                  <strong>Review ID</strong>: {review.reviewId}
+                                </p>
+                                <p>
+                                  <strong>Review</strong>: {review.body}
+                                </p>
+                                <br />
+                              </div>
+                            ))}
+                      </details>
+                    </Card>
+                  ))}
                 <p>
                   <strong>User-Wide Insights:</strong>{" "}
                   {purchasingCustomersInsights}
                 </p>
               </Card>
-
+            </>
+          )}
+          {selectedTab === 2 && (
+            <div>
+              <h1>Main Component</h1>
+              <button onClick={togglePopup}>Generate Review Prompt</button>
+              {isPopupOpen && (
+                <Popup data={reviewPromptData} onClose={closePopup} />
+              )}
+            </div>
+          )}
+          {selectedTab === 3 && (
+            <>
               <input
                 type="text"
                 placeholder="Enter text"
@@ -457,6 +504,7 @@ export default function Index() {
                     agentQuery: agentQuery,
                     userMode: true,
                     tableToQuery: "Review",
+                    caller: "seller",
                   };
                   console.log(selectedProduct);
                   try {
@@ -482,37 +530,7 @@ export default function Index() {
               >
                 Query Reviews
               </Button>
-              <Button
-                onClick={async () => {
-                  const requestData = {
-                    productId: selectedProduct,
-                    agentQuery: agentQuery,
-                    userMode: true,
-                    tableToQuery: "Query",
-                  };
-                  try {
-                    const response = await fetch("/agent", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
-                      body: JSON.stringify(requestData),
-                    });
 
-                    const data = await response.json();
-
-                    // Handle the response from the /agent API
-                    setAgentResponse(data?.output);
-                    setAgentResult(data?.result);
-                    setAgentSqlQuery(data?.sqlQuery);
-                  } catch (error) {
-                    // Handle any errors
-                    console.error(error);
-                  }
-                }}
-              >
-                Query Past Queries
-              </Button>
               {agentResponse && (
                 <>
                   <Card>
@@ -540,7 +558,6 @@ export default function Index() {
                               {resultChunks[index] && (
                                 <p>{resultChunks[index].chunkBody}</p>
                               )}
-                              {resultQueries && <p>{resultQueries[index]}</p>}
                             </Card>
                           ),
                         )}
@@ -553,19 +570,7 @@ export default function Index() {
                   </Card>
                 </>
               )}
-            </>
-          )}
-          {selectedTab === 2 && (
-            <div>
-              <h1>Main Component</h1>
-              <button onClick={togglePopup}>Generate Review Prompt</button>
-              {isPopupOpen && (
-                <Popup data={reviewPromptData} onClose={closePopup} />
-              )}
-            </div>
-          )}
-          {selectedTab === 3 && (
-            <>
+
               {reviewListDetails &&
                 reviewListDetails.map((review, index) => (
                   <Card key={index}>
@@ -582,30 +587,133 @@ export default function Index() {
                 ))}
             </>
           )}
+          {selectedTab === 4 && (
+            <>
+              <input
+                type="text"
+                placeholder="Enter text"
+                onChange={(e) => setAgentQuery(e.target.value)}
+              />
+              <Button
+                onClick={async () => {
+                  const requestData = {
+                    productId: selectedProduct,
+                    agentQuery: agentQuery,
+                    userMode: true,
+                    tableToQuery: "Queries",
+                    caller: "seller",
+                  };
+                  console.log(selectedProduct);
+                  try {
+                    const response = await fetch("/agent", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify(requestData),
+                    });
+
+                    const data = await response.json();
+
+                    // Handle the response from the /agent API
+                    setAgentResponse(data?.output);
+                    setAgentResult(data?.result);
+                    setAgentSqlQuery(data?.sqlQuery);
+                  } catch (error) {
+                    // Handle any errors
+                    console.error(error);
+                  }
+                }}
+              >
+                Query Customer Queries
+              </Button>
+
+              {agentResponse && (
+                <>
+                  <Card>
+                    <p>
+                      <strong>Input Query:</strong> {agentQuery}
+                    </p>
+                  </Card>
+                  <Card>
+                    <p>
+                      <strong>Agent Response:</strong>
+                    </p>
+                    {agentResponse && <p>{agentResponse}</p>}
+                    <br /> {/* add new line */}
+                    <BlockStack>
+                      {agentResult &&
+                        JSON.parse(agentResult).map(
+                          (obj: any, index: number) => (
+                            <Card key={index}>
+                              {obj.similarity_score > 0.45 ? (
+                                <strong>{JSON.stringify(obj)}</strong>
+                              ) : (
+                                JSON.stringify(obj)
+                              )}
+
+                              {resultQueries && <p>{resultQueries[index]}</p>}
+                            </Card>
+                          ),
+                        )}
+                    </BlockStack>
+                  </Card>
+                  <Card>
+                    <p>
+                      <strong>SQL Query Used:</strong> {agentSqlQuery}
+                    </p>
+                  </Card>
+                </>
+              )}
+
+              {queriesListDetails &&
+                queriesListDetails.map((query, index) => (
+                  <Card key={index}>
+                    <p>Query ID: {query.queryId}</p>
+                    <p>User ID: {query.userId}</p>
+                    <p>Query: {query.query}</p>
+                  </Card>
+                ))}
+            </>
+          )}
         </Card>
       </Tabs>
 
-       {
-        <Card>
-        <DataTable
-          columnContentTypes={["text", "text", "text"]}
-          headings={["Title", "ID", "Image"]}
-          rows={products.map((product) => [
-            <Button onClick={() => handleProductSelection(product.id)}>
-              {product.title}
-            </Button>,
-            product.id,
-            <img
-              src={product.imageUrl}
-              alt={product.title}
-              style={{ width: "50px", height: "auto" }}
-            />,
-          ])}
-        />
+      <Card>
+        <p>Selected Product ID: {selectedProduct}</p>
+        {
+          <>
+            <Button
+              onClick={() =>
+                selectedProduct &&
+                reviewListDetails.length != 0 &&
+                pushReviewsToDatabase(selectedProduct, reviewListDetails)
+              }
+            >
+              Add Reviews to Database
+            </Button>
+          </>
+        }
       </Card>
-       }
-
-      
+      {
+        <Card>
+          <DataTable
+            columnContentTypes={["text", "text", "text"]}
+            headings={["Title", "ID", "Image"]}
+            rows={products.map((product) => [
+              <Button onClick={() => handleProductSelection(product.id)}>
+                {product.title}
+              </Button>,
+              product.id,
+              <img
+                src={product.imageUrl}
+                alt={product.title}
+                style={{ width: "50px", height: "auto" }}
+              />,
+            ])}
+          />
+        </Card>
+      }
 
       {/* {isLoading ? (
         <Card>

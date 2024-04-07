@@ -56,6 +56,32 @@ export async function fetchJudgeReviews(productId: string) {
   });
 }
 
+export async function fetchJudgeReview(reviewId: string) {
+  const judgeApiKey = process.env.JUDGE_API_KEY;
+  const shopDomain = process.env.SHOPIFY_DOMAIN;
+
+  const response = await fetch(
+    `https://judge.me/api/v1/reviews/${reviewId}?api_token=${judgeApiKey}&shop_domain=${shopDomain}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    // Handle error if response is not ok
+    throw new Error("Failed to fetch reviews");
+  }
+
+  const responseJson = await response.json();
+
+  return json({
+    review: responseJson.review,
+  });
+}
+
 export async function getCustomerProductPurchases(customerId: number) {
   const response = await admin.graphql(`
     query {

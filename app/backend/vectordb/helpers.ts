@@ -1,7 +1,7 @@
 import fs from "fs";
 import mysql, { RowDataPacket } from "mysql2/promise";
 import OpenAI from "openai";
-import { Review } from "../../globals";
+import { Review, Query } from "../../globals";
 import { Chunk, chunk_string } from "../langchain/chunking";
 import { getCustomerProductPurchases } from "../api_calls";
 
@@ -468,6 +468,32 @@ export async function getQueryInfo(
       queries.push(query);
     }
     return { userIds: userIds, queries: queries };
+  } catch (err) {
+    console.error("ERROR", err);
+    process.exit(1);
+  }
+}
+
+export async function getProductQueries(
+  productId: number,
+): Promise<{ queries: Query[] }> {
+  try {
+    const [results, buff] = await singleStoreConnection.execute(
+      `
+          SELECT queryId, query, userId FROM Queries WHERE productId = ?
+        `,
+      [productId],
+    );
+    const queries: Query[] = [];
+    for (const row of results as RowDataPacket[]) {
+      const query: Query = {
+        queryId: row.queryId,
+        query: row.query,
+        userId: row.userId,
+      };
+      queries.push(query);
+    }
+    return { queries };
   } catch (err) {
     console.error("ERROR", err);
     process.exit(1);

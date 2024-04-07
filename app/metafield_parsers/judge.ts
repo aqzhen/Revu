@@ -1,6 +1,6 @@
 import { Review } from "../globals";
 
-export function parseReviewData(reviews: any) {
+export function parseReviewsData(reviews: any) {
   return reviews.map((review: any) => ({
     reviewId: review.id,
     title: review.title,
