@@ -92,6 +92,7 @@ export default function Index() {
   var [purchasingCustomersReviews, setPurchasingCustomersReviews] = useState<
     Review[]
   >([]);
+  var [purchasingCustomersCategories, setPurchasingCustomersCategories] = useState<Category[]>([]);
 
   const nav = useNavigation();
   const isLoading =
@@ -362,15 +363,68 @@ export default function Index() {
                         )}
                       </details>
                       <br />
+                    </div>
+                  }
+                </Card>
+              ))}
+            </>
+          )}
+          {selectedTab === 1 && (
+            <>
+              <Card>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const requestData = {
+                        productId: selectedProduct,
+                        selector: "purchasingCustomers",
+                      };
+
+                      const response = await fetch("/agent/sellSideInsights", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify(requestData),
+                      });
+                      const data = await response.json();
+                      const { categories } = data;
+                      setPurchasingCustomersCategories(categories);
+                    } catch (error) {
+                      // Handle any errors
+                      console.error(error);
+                    }
+                  }}
+                >
+                  Get Insights
+                </Button>
+                {purchasingCustomersCategories && purchasingCustomersCategories.map((category) => (
+                <Card>
+                  {
+                    <div key={category.category}>
+                      <h1 style={{fontFamily: 'Arial, sans-serif', 
+                                  color: '#0077b6',
+                                  fontSize: 16 }}>           
+                      <strong>Category:</strong> {category.category} </h1>
+                      <p> <strong>Summary:</strong> {category.summary} </p>
+                      <p> <strong>Suggestions:</strong> {category.suggestions}</p>
+                      <br />
+                      <details>
+                        <summary> See Relevant Queries </summary>
+                        {category.queries.map((query) => 
+                          <div key={query.queryId}>
+                            <p> <strong>Query: </strong> {query.query} (Query ID: {query.queryId}, User ID: {query.userId})</p>
+                          </div>
+                        )}
+                      </details>
+                      <br />
                       <Button
                       onClick={async () => {
                         try {
                           const userIds: Set<number> = new Set();
-                          windowCategories.forEach(category => {
-                            category.queries.forEach((query) => (
-                              userIds.add(query.userId)
-                            ))
-                          });
+                          category.queries.forEach((query) => (
+                            userIds.add(query.userId)
+                          ));
                           const requestData = {
                             userIds: Array.from(userIds),
                           };
@@ -398,86 +452,13 @@ export default function Index() {
                     {reviewPromptData && 
                       reviewPromptData.map((prompt) => (
                         <div>
-                          <p> Followups succesfully generated, check the followups tab!</p>
+                          <p> Followups succesfully generated for userId: {prompt.userId}, check the followups tab!</p>
                         </div>
                       ))}
                     </div>
                   }
                 </Card>
               ))}
-            </>
-          )}
-          {selectedTab === 1 && (
-            <>
-              <Card>
-                <Button
-                  onClick={async () => {
-                    try {
-                      const requestData = {
-                        productId: selectedProduct,
-                        selector: "purchasingCustomers",
-                      };
-
-                      const response = await fetch("/agent/sellSideInsights", {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify(requestData),
-                      });
-                      const data = await response.json();
-                      const { llmOutput, userQueries, userReviews } = data;
-                      setPurchasingCustomersInsights(llmOutput);
-                      setPurchasingCustomersQueries(userQueries);
-                      setPurchasingCustomersReviews(userReviews);
-                    } catch (error) {
-                      // Handle any errors
-                      console.error(error);
-                    }
-                  }}
-                >
-                  Get Insights
-                </Button>
-                {purchasingCustomersQueries && [
-                  ...new Set(
-                    purchasingCustomersQueries.map((query) => query.userId),
-                  ),
-                ].map((userId) => (
-                  <Card key={userId}>
-                    <details>
-                      <summary>User ID: {userId}</summary>
-                      {purchasingCustomersQueries && purchasingCustomersQueries
-                        .filter((query) => query.userId === userId)
-                        .map((query) => (
-                          <div key={query.queryId}>
-                            <p>
-                              <strong>Query ID</strong>: {query.queryId}
-                            </p>
-                            <p>
-                              <strong>Query</strong>: {query.query}
-                            </p>
-                            <br />
-                          </div>
-                        ))}
-
-                      {purchasingCustomersReviews && purchasingCustomersReviews
-                        .filter(
-                          (review) => review.reviewerExternalId === userId,
-                        )
-                        .map((review) => (
-                          <div key={review.reviewId}>
-                            <p>
-                              <strong>Review ID</strong>: {review.reviewId}
-                            </p>
-                            <p>
-                              <strong>Review</strong>: {review.body}
-                            </p>
-                            <br />
-                          </div>
-                        ))}
-                    </details>
-                  </Card>
-                ))}
                 <p>
                   <strong>User-Wide Insights:</strong>{" "}
                   {purchasingCustomersInsights}
