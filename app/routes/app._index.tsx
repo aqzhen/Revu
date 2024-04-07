@@ -8,7 +8,7 @@ import {
   Page,
   Tabs,
 } from "@shopify/polaris";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from 'react';
 import { getProducts } from "../backend/api_calls";
 import { parseReviewData } from "../metafield_parsers/judge";
 import { authenticate } from "../shopify.server";
@@ -25,7 +25,7 @@ import {
   updatePurchasedStatus,
 } from "../backend/vectordb/helpers";
 import Popup from "../frontend/components/Popup";
-import { Query, Review } from "../globals";
+import { Category, Query, Review } from "../globals";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -82,8 +82,7 @@ export default function Index() {
   var [reviewPromptData, setReviewPromptData] = useState<string[]>([]);
 
   // Sellside Insights - Window Shoppers
-  var [windowInsights, setWindowInsights] = useState<string>("");
-  var [windowQueries, setWindowQueries] = useState<Query[]>([]);
+  var [windowCategories, setWindowCategories] = useState<Category[]>([]);
 
   // Sellside Insights - Purchasing Customers
   var [purchasingCustomersInsights, setPurchasingCustomersInsights] =
@@ -298,42 +297,23 @@ export default function Index() {
 
   return (
     <Page>
-      <Card>
-        <DataTable
-          columnContentTypes={["text", "text", "text"]}
-          headings={["Title", "ID", "Image"]}
-          rows={products.map((product) => [
-            <Button onClick={() => handleProductSelection(product.id)}>
-              {product.title}
-            </Button>,
-            product.id,
-            <img
-              src={product.imageUrl}
-              alt={product.title}
-              style={{ width: "50px", height: "auto" }}
-            />,
-          ])}
-        />
-      </Card>
-
-      <Card>
-        <p>Selected Product ID: {selectedProduct}</p>
-        {
-          <>
-            <Button
-              onClick={() =>
-                selectedProduct &&
-                reviewListDetails.length != 0 &&
-                pushReviewsToDatabase(selectedProduct, reviewListDetails)
-              }
-            >
-              Add Reviews to Database
-            </Button>
-          </>
-        }
-      </Card>
-
       <Tabs tabs={tabs} selected={selectedTab} onSelect={handleTabChange}>
+        <Card>
+          <p>Selected Product ID: {selectedProduct}</p>
+          {
+            <>
+              <Button
+                onClick={() =>
+                  selectedProduct &&
+                  reviewListDetails.length != 0 &&
+                  pushReviewsToDatabase(selectedProduct, reviewListDetails)
+                }
+              >
+                Add Reviews to Database
+              </Button>
+            </>
+          }
+        </Card>
         <Card>
           {selectedTab === 0 && (
             <>
@@ -353,9 +333,8 @@ export default function Index() {
                       body: JSON.stringify(requestData),
                     });
                     const data = await response.json();
-                    const { llmOutput, userQueries } = data;
-                    setWindowInsights(llmOutput);
-                    setWindowQueries(userQueries);
+                    const { categories } = data;
+                    setWindowCategories(categories);
                   } catch (error) {
                     // Handle any errors
                     console.error(error);
@@ -364,31 +343,29 @@ export default function Index() {
               >
                 Get Insights
               </Button>
-              {[...new Set(windowQueries.map((query) => query.userId))].map(
-                (userId) => (
-                  <Card key={userId}>
-                    <details>
-                      <summary>User ID: {userId}</summary>
-                      {windowQueries
-                        .filter((query) => query.userId === userId)
-                        .map((query) => (
+              {windowCategories && windowCategories.map((category) => (
+                <Card>
+                  {
+                    <div key={category.category}>
+                      <h1 style={{ 
+          fontFamily: 'Arial, sans-serif', 
+          color: '#0077b6',
+          fontSize: 16 
+        }}> <strong>Category:</strong> {category.category} </h1>
+                      <p> <strong>Summary:</strong> {category.summary} </p>
+                      <p> <strong>Suggestions:</strong> {category.suggestions}</p>
+                      <details>
+                        <summary> See Relevant Queries </summary>
+                        {category.queries.map((query) => 
                           <div key={query.queryId}>
-                            <p>
-                              <strong>Query ID</strong>: {query.queryId}
-                            </p>
-                            <p>
-                              <strong>Query</strong>: {query.query}
-                            </p>
-                            <br />
+                            <p> <strong>Query: </strong> {query.query} (Query ID: {query.queryId}, User ID: {query.userId})</p>
                           </div>
-                        ))}
-                    </details>
-                  </Card>
-                ),
-              )}
-              <p>
-                <strong>User-Wide Insights:</strong> {windowInsights}
-              </p>
+                        )}
+                      </details>
+                    </div>
+                  }
+                </Card>
+              ))}
             </>
           )}
           {selectedTab === 1 && (
@@ -422,7 +399,7 @@ export default function Index() {
                 >
                   Get Insights
                 </Button>
-                {[
+                {purchasingCustomersQueries && [
                   ...new Set(
                     purchasingCustomersQueries.map((query) => query.userId),
                   ),
@@ -430,7 +407,7 @@ export default function Index() {
                   <Card key={userId}>
                     <details>
                       <summary>User ID: {userId}</summary>
-                      {purchasingCustomersQueries
+                      {purchasingCustomersQueries && purchasingCustomersQueries
                         .filter((query) => query.userId === userId)
                         .map((query) => (
                           <div key={query.queryId}>
@@ -444,7 +421,7 @@ export default function Index() {
                           </div>
                         ))}
 
-                      {purchasingCustomersReviews
+                      {purchasingCustomersReviews && purchasingCustomersReviews
                         .filter(
                           (review) => review.reviewerExternalId === userId,
                         )
@@ -607,6 +584,28 @@ export default function Index() {
           )}
         </Card>
       </Tabs>
+
+       {
+        <Card>
+        <DataTable
+          columnContentTypes={["text", "text", "text"]}
+          headings={["Title", "ID", "Image"]}
+          rows={products.map((product) => [
+            <Button onClick={() => handleProductSelection(product.id)}>
+              {product.title}
+            </Button>,
+            product.id,
+            <img
+              src={product.imageUrl}
+              alt={product.title}
+              style={{ width: "50px", height: "auto" }}
+            />,
+          ])}
+        />
+      </Card>
+       }
+
+      
 
       {/* {isLoading ? (
         <Card>

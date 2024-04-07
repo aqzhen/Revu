@@ -22,3 +22,10 @@ export type Query = {
 declare global {
   var admin: any;
 }
+
+export type Category = {
+  category: string,
+  queries: Query[],
+  summary: string,
+  suggestions: string
+}

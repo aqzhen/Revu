@@ -78,7 +78,7 @@ export async function getReviewPromptData(): Promise<{
   reviewPromptData: string[];
 }> {
   console.log("I am here in the API");
-  let llmOutput = await call_reviewPromptLLM(1);
+  let llmOutput = await call_reviewPromptLLM(7990795632940);
   console.log("API has returned llm output here it is");
   console.log(llmOutput);
   return { reviewPromptData: [llmOutput] };
