@@ -277,7 +277,7 @@ export async function addQueryToSingleStore(
         ) VALUES (
             ${productId},
             ${userId},
-            '${query}',
+            '${query.replace(/'/g, "\\'")}',
             '${answer.replace(/'/g, "\\'")}'
         )
         `,
@@ -323,7 +323,7 @@ export async function addSellerQueryToSingleStore(
         ) VALUES (
             ${productId},
             ${userId},
-            '${query}',
+            '${query.replace(/'/g, "\\'")}',
             '${answer.replace(/'/g, "\\'")}'
         )
         `,

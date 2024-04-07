@@ -6,7 +6,7 @@ import {
   Card,
   DataTable,
   Page,
-  Tabs
+  Tabs,
 } from "@shopify/polaris";
 import { useCallback, useEffect, useState } from "react";
 import { getProducts } from "../backend/api_calls";
@@ -21,7 +21,8 @@ import {
   createPurchasesTable,
   createQueriesTable,
   createReviewTable,
-  createSellerQueriesTable
+  createSellerQueriesTable,
+  updatePurchasedStatus,
 } from "../backend/vectordb/helpers";
 import Popup from "../frontend/components/Popup";
 import { Query, Review } from "../globals";

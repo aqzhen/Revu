@@ -182,8 +182,33 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
 
     llmOutput = (
       await llm.invoke(
-        `You are given the following queries that a user has made on a product, in addition to the reviews that they left on the product. You should synthesize these queries into an appropriate amount (1-5) categories of what these users were looking for in the product when querying. For each category, output the specific queries, queryIds, and userIds that contributed to the category. Correspondingly, you should discuss how the content within the reviews address the categories and ideas brought up in the queries. Then, include a small summary of this data that is digestable for the seller. Provide 3 potential suggestions to improve their product in order to cater to these users and specific queries. In addition, you are provided the product description provided by the seller. Provide suggestions on how to improve 
-        the product description so as to better capture customers who are making queries and leaving reviews in each category.` +
+        `
+        You are given the following queries that a user has made on a product, in addition to the reviews that they left on the product.
+        These users have purchased the product. \n FIRST, you should analyze these queries and come up with an appropriate amount (1-5) of
+        categories which uniquely describe what the users were looking for in the product when querying. Then, you should discuss how the content within the reviews address the categories and ideas brought up in the queries. Then, include a small summary of this data that is digestable for the seller. \n
+        
+        DO NOT make up categories that are not relevant to the specific queries from the users. THE only thing you should use in 
+        making the categories is the specific queries from the users. 
+        
+        YOU SHOULD USE EVERY SINGLE QUERY in some category. IF A QUERY DOES NOT FALL UNDER A SPECIFIC CATEGORY, you can include in a 
+        category called "UNCATEGORIZED"\n
+        
+        For each category/bucket that you make, output the title of the category first. Then, output in row form every single
+        user id, query id, and query which falls under the category. Your output should always follows this JSON format:
+        
+        For each category, output a small, digestable summary of the category and what the users' queries in this category mean.
+        Also, provide 1 suggestion for how the seller could better cater to this category of users. In addition, you are 
+        provided the product description provided by the seller. Provide suggestions on how to improve 
+        the product description so as to better capture customers who are making queries and reviews in each category. 
+
+        EXAMPLE: \n
+        
+        Category 1 Name \n
+        UserId: xxxx, QueryId: xxxx, Query: abcd\n
+        UserId: xxxx, QueryId: xxxx, Query: abcd \n
+        Summary of Category: xxxx\n 
+        Summary of Query/Review Match: xxxx\n
+        Suggestion(s): xxxx ` +
           "\n" +
           userQueries +
           userReviews +
