@@ -24,7 +24,6 @@ import {
   createSellerQueriesTable,
   updatePurchasedStatus,
 } from "../backend/vectordb/helpers";
-import Popup from "../frontend/components/Popup";
 import { Category, Query, Review } from "../globals";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -77,12 +76,13 @@ export default function Index() {
   var [resultChunks, setResultChunks] = useState<Chunk[]>([]);
 
   var [agentQuery, setAgentQuery] = useState<string>("");
-  var [agentResponse, setAgentResponse] = useState<string>(); // this is the LLM output text answer
+  var [reviewAgentResponse, setReviewAgentResponse] = useState<string>(); // this is the LLM output text answer
+  var [queryAgentResponse, setQueryAgentResponse] = useState<string>(); // this is the LLM output text answer
   var [agentResult, setAgentResult] = useState<string>(); // this is the sql query result (resultIds, etc..)
   var [agentSqlQuery, setAgentSqlQuery] = useState<string>("");
 
   // Followups
-  var [reviewPromptData, setReviewPromptData] = useState<string[]>([]);
+  var [reviewPromptData, setReviewPromptData] = useState<any[]>([]);
 
   // Sellside Insights - Window Shoppers
   var [windowCategories, setWindowCategories] = useState<Category[]>([]);
@@ -96,6 +96,8 @@ export default function Index() {
   var [purchasingCustomersReviews, setPurchasingCustomersReviews] = useState<
     Review[]
   >([]);
+  var [purchasingCustomersCategories, setPurchasingCustomersCategories] =
+    useState<Category[]>([]);
 
   const nav = useNavigation();
   const isLoading =
@@ -331,6 +333,22 @@ export default function Index() {
     <Page>
       <Tabs tabs={tabs} selected={selectedTab} onSelect={handleTabChange}>
         <Card>
+          <p>Selected Product ID: {selectedProduct}</p>
+          {
+            <>
+              <Button
+                onClick={() =>
+                  selectedProduct &&
+                  reviewListDetails.length != 0 &&
+                  pushReviewsToDatabase(selectedProduct, reviewListDetails)
+                }
+              >
+                Add Reviews to Database
+              </Button>
+            </>
+          }
+        </Card>
+        <Card>
           {selectedTab === 0 && (
             <>
               <Button
@@ -371,7 +389,6 @@ export default function Index() {
                             fontSize: 16,
                           }}
                         >
-                          {" "}
                           <strong>Category:</strong> {category.category}{" "}
                         </h1>
                         <p>
@@ -382,6 +399,7 @@ export default function Index() {
                           {" "}
                           <strong>Suggestions:</strong> {category.suggestions}
                         </p>
+                        <br />
                         <details>
                           <summary> See Relevant Queries </summary>
                           {category.queries.map((query) => (
@@ -394,6 +412,7 @@ export default function Index() {
                             </div>
                           ))}
                         </details>
+                        <br />
                       </div>
                     }
                   </Card>
@@ -419,10 +438,8 @@ export default function Index() {
                         body: JSON.stringify(requestData),
                       });
                       const data = await response.json();
-                      const { llmOutput, userQueries, userReviews } = data;
-                      setPurchasingCustomersInsights(llmOutput);
-                      setPurchasingCustomersQueries(userQueries);
-                      setPurchasingCustomersReviews(userReviews);
+                      const { categories } = data;
+                      setPurchasingCustomersCategories(categories);
                     } catch (error) {
                       // Handle any errors
                       console.error(error);
@@ -431,47 +448,88 @@ export default function Index() {
                 >
                   Get Insights
                 </Button>
-                {purchasingCustomersQueries &&
-                  [
-                    ...new Set(
-                      purchasingCustomersQueries.map((query) => query.userId),
-                    ),
-                  ].map((userId) => (
-                    <Card key={userId}>
-                      <details>
-                        <summary>User ID: {userId}</summary>
-                        {purchasingCustomersQueries &&
-                          purchasingCustomersQueries
-                            .filter((query) => query.userId === userId)
-                            .map((query) => (
+                {purchasingCustomersCategories &&
+                  purchasingCustomersCategories.map((category) => (
+                    <Card>
+                      {
+                        <div key={category.category}>
+                          <h1
+                            style={{
+                              fontFamily: "Arial, sans-serif",
+                              color: "#0077b6",
+                              fontSize: 16,
+                            }}
+                          >
+                            <strong>Category:</strong> {category.category}{" "}
+                          </h1>
+                          <p>
+                            {" "}
+                            <strong>Summary:</strong> {category.summary}{" "}
+                          </p>
+                          <p>
+                            {" "}
+                            <strong>Suggestions:</strong> {category.suggestions}
+                          </p>
+                          <br />
+                          <details>
+                            <summary> See Relevant Queries </summary>
+                            {category.queries.map((query) => (
                               <div key={query.queryId}>
                                 <p>
-                                  <strong>Query ID</strong>: {query.queryId}
+                                  {" "}
+                                  <strong>Query: </strong> {query.query} (Query
+                                  ID: {query.queryId}, User ID: {query.userId})
                                 </p>
-                                <p>
-                                  <strong>Query</strong>: {query.query}
-                                </p>
-                                <br />
                               </div>
                             ))}
+                          </details>
+                          <br />
+                          <Button
+                            onClick={async () => {
+                              try {
+                                const userIds: Set<number> = new Set();
+                                category.queries.forEach((query) =>
+                                  userIds.add(query.userId),
+                                );
+                                const requestData = {
+                                  userIds: Array.from(userIds),
+                                };
+                                const response = await fetch(
+                                  "/prompts/getReviewPromptData",
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify(requestData),
+                                  },
+                                );
 
-                        {purchasingCustomersReviews &&
-                          purchasingCustomersReviews
-                            .filter(
-                              (review) => review.reviewerExternalId === userId,
-                            )
-                            .map((review) => (
-                              <div key={review.reviewId}>
+                                const data = await response.json();
+                                console.log(data);
+                                // Handle the response from the API
+                                setReviewPromptData(data.reviewPromptData);
+                              } catch (error) {
+                                // Handle any errors
+                                console.error(error);
+                              }
+                            }}
+                          >
+                            Prompt Users
+                          </Button>
+                          <br />
+                          {reviewPromptData &&
+                            reviewPromptData.map((prompt) => (
+                              <div>
                                 <p>
-                                  <strong>Review ID</strong>: {review.reviewId}
+                                  {" "}
+                                  Followups succesfully generated for userId:{" "}
+                                  {prompt.userId}, check the followups tab!
                                 </p>
-                                <p>
-                                  <strong>Review</strong>: {review.body}
-                                </p>
-                                <br />
                               </div>
                             ))}
-                      </details>
+                        </div>
+                      }
                     </Card>
                   ))}
                 <p>
@@ -481,15 +539,14 @@ export default function Index() {
               </Card>
             </>
           )}
-          {selectedTab === 2 && (
-            <div>
-              <h1>Main Component</h1>
-              <button onClick={togglePopup}>Generate Review Prompt</button>
-              {isPopupOpen && (
-                <Popup data={reviewPromptData} onClose={closePopup} />
-              )}
-            </div>
-          )}
+          {selectedTab === 2 &&
+            reviewPromptData &&
+            reviewPromptData.map((review) => (
+              <Card>
+                <p> {review.userId} </p>
+                <p> {review.reviewPrompt} </p>
+              </Card>
+            ))}
           {selectedTab === 3 && (
             <>
               <input
@@ -519,7 +576,7 @@ export default function Index() {
                     const data = await response.json();
 
                     // Handle the response from the /agent API
-                    setAgentResponse(data?.output);
+                    setReviewAgentResponse(data?.output);
                     setAgentResult(data?.result);
                     setAgentSqlQuery(data?.sqlQuery);
                   } catch (error) {
@@ -531,7 +588,7 @@ export default function Index() {
                 Query Reviews
               </Button>
 
-              {agentResponse && (
+              {reviewAgentResponse && (
                 <>
                   <Card>
                     <p>
@@ -542,7 +599,7 @@ export default function Index() {
                     <p>
                       <strong>Agent Response:</strong>
                     </p>
-                    {agentResponse && <p>{agentResponse}</p>}
+                    {reviewAgentResponse && <p>{reviewAgentResponse}</p>}
                     <br /> {/* add new line */}
                     <BlockStack>
                       {agentResult &&
@@ -587,6 +644,7 @@ export default function Index() {
                 ))}
             </>
           )}
+
           {selectedTab === 4 && (
             <>
               <input
@@ -616,7 +674,7 @@ export default function Index() {
                     const data = await response.json();
 
                     // Handle the response from the /agent API
-                    setAgentResponse(data?.output);
+                    setQueryAgentResponse(data?.output);
                     setAgentResult(data?.result);
                     setAgentSqlQuery(data?.sqlQuery);
                   } catch (error) {
@@ -628,7 +686,7 @@ export default function Index() {
                 Query Customer Queries
               </Button>
 
-              {agentResponse && (
+              {queryAgentResponse && (
                 <>
                   <Card>
                     <p>
@@ -639,7 +697,7 @@ export default function Index() {
                     <p>
                       <strong>Agent Response:</strong>
                     </p>
-                    {agentResponse && <p>{agentResponse}</p>}
+                    {queryAgentResponse && <p>{queryAgentResponse}</p>}
                     <br /> {/* add new line */}
                     <BlockStack>
                       {agentResult &&
@@ -679,22 +737,6 @@ export default function Index() {
         </Card>
       </Tabs>
 
-      <Card>
-        <p>Selected Product ID: {selectedProduct}</p>
-        {
-          <>
-            <Button
-              onClick={() =>
-                selectedProduct &&
-                reviewListDetails.length != 0 &&
-                pushReviewsToDatabase(selectedProduct, reviewListDetails)
-              }
-            >
-              Add Reviews to Database
-            </Button>
-          </>
-        }
-      </Card>
       {
         <Card>
           <DataTable
