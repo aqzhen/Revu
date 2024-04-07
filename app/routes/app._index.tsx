@@ -24,7 +24,6 @@ import {
   createSellerQueriesTable,
   updatePurchasedStatus,
 } from "../backend/vectordb/helpers";
-import Popup from "../frontend/components/Popup";
 import { Category, Query, Review } from "../globals";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -79,7 +78,7 @@ export default function Index() {
   var [agentSqlQuery, setAgentSqlQuery] = useState<string>("");
 
   // Followups
-  var [reviewPromptData, setReviewPromptData] = useState<string[]>([]);
+  var [reviewPromptData, setReviewPromptData] = useState<any[]>([]);
 
   // Sellside Insights - Window Shoppers
   var [windowCategories, setWindowCategories] = useState<Category[]>([]);
@@ -347,13 +346,13 @@ export default function Index() {
                 <Card>
                   {
                     <div key={category.category}>
-                      <h1 style={{ 
-          fontFamily: 'Arial, sans-serif', 
-          color: '#0077b6',
-          fontSize: 16 
-        }}> <strong>Category:</strong> {category.category} </h1>
+                      <h1 style={{fontFamily: 'Arial, sans-serif', 
+                                  color: '#0077b6',
+                                  fontSize: 16 }}>           
+                      <strong>Category:</strong> {category.category} </h1>
                       <p> <strong>Summary:</strong> {category.summary} </p>
                       <p> <strong>Suggestions:</strong> {category.suggestions}</p>
+                      <br />
                       <details>
                         <summary> See Relevant Queries </summary>
                         {category.queries.map((query) => 
@@ -362,6 +361,46 @@ export default function Index() {
                           </div>
                         )}
                       </details>
+                      <br />
+                      <Button
+                      onClick={async () => {
+                        try {
+                          const userIds: Set<number> = new Set();
+                          windowCategories.forEach(category => {
+                            category.queries.forEach((query) => (
+                              userIds.add(query.userId)
+                            ))
+                          });
+                          const requestData = {
+                            userIds: Array.from(userIds),
+                          };
+                          const response = await fetch("/prompts/getReviewPromptData", {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify(requestData)
+                          });
+                    
+                          const data = await response.json();
+                          console.log(data);
+                          // Handle the response from the API
+                          setReviewPromptData(data.reviewPromptData);
+                        } catch (error) {
+                          // Handle any errors
+                          console.error(error);
+                        }
+                      }}
+                    >
+                    Prompt Users
+                    </Button>
+                    <br />
+                    {reviewPromptData && 
+                      reviewPromptData.map((prompt) => (
+                        <div>
+                          <p> Followups succesfully generated, check the followups tab!</p>
+                        </div>
+                      ))}
                     </div>
                   }
                 </Card>
@@ -556,13 +595,13 @@ export default function Index() {
             </>
           )}
           {selectedTab === 2 && (
-            <div>
-              <h1>Main Component</h1>
-              <button onClick={togglePopup}>Generate Review Prompt</button>
-              {isPopupOpen && (
-                <Popup data={reviewPromptData} onClose={closePopup} />
-              )}
-            </div>
+            reviewPromptData && 
+            reviewPromptData.map((review) => (
+              <Card>
+                <p> {review.userId} </p>
+                <p> {review.reviewPrompt} </p>
+              </Card>
+            ))
           )}
           {selectedTab === 3 && (
             <>

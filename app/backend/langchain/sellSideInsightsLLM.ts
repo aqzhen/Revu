@@ -69,10 +69,11 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
         YOU SHOULD USE EVERY SINGLE QUERY in some category. IF A QUERY DOES NOT FALL UNDER A SPECIFIC CATEGORY, you can include in a 
         category called "UNCATEGORIZED"\n
         
-        Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.
-        Also, provide 1 suggestion for how the seller could better cater to this category of users. This suggestion should
-        pertain to the given product description and be a CONCRETE CHANGE that could be made to the description to better cater to the 
-        category of users.
+        Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.\n
+        
+        IMPORTANT: Provide 1 suggestion for how the seller should change their product description to better cater to this category
+        of users. YOU MUST specifically point out what is lacking in the current product description and then provide a better
+        alternative or addition. BE SPECIFIC AND USE THE PRODUCT DESCRIPTION GIVEN TO YOU. YOU MUST REFERENCE SOMETHING SPECIFIC FROM THE PRODUCT DESCRIPTION!!!!!\n
 
         IMPORTANT: You must format your output as a JSON value that adheres to a given "JSON Schema" instance.
 
