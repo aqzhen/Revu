@@ -52,8 +52,14 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
       };
     });
 
+    if (queryList.length == 0) {
+      console.log("No queries");
+    }
+
     // Getting product description
     const productDescription = await getProductDescription(productId);
+    const {description} = productDescription;
+    console.log(description);
 
     llmOutput = (
       await llm.invoke(
@@ -137,7 +143,7 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
       }      
       ` + 
           "\n" +
-          userQueries +
+          queryList +
           ". Product Description: " +
           productDescription,
       )
@@ -158,32 +164,53 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
     // console.log(response);
 
     const categories : Category[] = [];
-    response.forEach((element: { category: any; summary: any; suggestions: any; queries: { queryId: any; query: any; userId: any; }[]; }) => {
-      let name = element.category;
-      let summary = element.summary;
-      let suggestions = element.suggestions;
-      let queries : Query[] = []
-      element.queries.forEach((query: { queryId: any; query: any; userId: any; }) => {
-        let q : Query = {
-          queryId: query.queryId,
-          query: query.query,
-          userId: query.userId,
+    if (response.length > 0) {
+      response.forEach((element: { category: any; summary: any; suggestions: any; queries: { queryId: any; query: any; userId: any; }[]; }) => {
+        let name = element.category;
+        let summary = element.summary;
+        let suggestions = element.suggestions;
+        let queries : Query[] = []
+        element.queries.forEach((query: { queryId: any; query: any; userId: any; }) => {
+          let q : Query = {
+            queryId: query.queryId,
+            query: query.query,
+            userId: query.userId,
+          }
+          queries.push(q);
+        });
+        
+        let c : Category = {
+          category: name,
+          queries: queries,
+          summary: summary,
+          suggestions: suggestions
         }
-        queries.push(q);
+        categories.push(c);
       });
-      
-      let c : Category = {
-        category: name,
-        queries: queries,
-        summary: summary,
-        suggestions: suggestions
-      }
-      categories.push(c);
-    });
+    }
 
-    console.log(categories);
+    const userWideInsights = (
+      await llm.invoke(
+        `You are given queries from users who did not purchase this proudct. You are also given the product description
+        for this product. You are also given the categories of these queries which have been already identified.
+
+        Based only on the queries, reviews, and product description, output a one paragraph summary which explains what
+        these users were looking for (based on queries) and EXACTLY what the seller could change about their product description to alieviate discrpencies between queries and reviews.
+
+        You should give very specific suggestions as to how to change the product description. 
+
+        EXAMPLE: The product description for [Product Name] does not mention xyz. Here are some possible rewordings to the product description which targets category x:
+        - change "xxxx" to "yyyy"
   
-    return { categories: response };
+        ` +
+            "\n" +
+            userQueries +
+            ". Product Description: " +
+            productDescription,
+      )
+    ).content;
+  
+    return { categories: response, userWideInsights: userWideInsights };
   } catch (err) {
     console.error("ERROR", err);
     return "ERROR";
@@ -396,8 +423,29 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
     });
 
     console.log(categories);
+
+    const userWideInsights = (
+      await llm.invoke(
+        `You are given queries and reviews from users who purchased this proudct. You are also given the product description
+        for this product.
+
+        Based only on the queries, reviews, and product description, output a one paragraph summary which explains what
+        these users were looking (based on queries), what they thought of the product (based on reviews), and ultimately
+        what the seller could change about their product description to alieviate discrpencies between queries and reviews.
+
   
-    return { categories: response };
+        ` +
+            "\n" +
+            userQueries +
+            userReviews +
+            ". Product Description: " +
+            productDescription,
+      )
+    ).content;
+
+    console.log(userWideInsights);
+  
+    return { categories: response, userWideInsights : userWideInsights as string };
   } catch (err) {
     console.error("ERROR", err);
     return "ERROR";

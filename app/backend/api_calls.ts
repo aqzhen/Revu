@@ -133,5 +133,5 @@ export async function getProductDescription(productId: number) {
   }
   const responseJson = await response.json();
 
-  return json({ description: responseJson.data?.product?.description });
+  return ({ description: responseJson.data?.product?.description });
 }
