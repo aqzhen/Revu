@@ -52,6 +52,8 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
       };
     });
 
+    console.log(queryList);
+
     if (queryList.length == 0) {
       console.log("No queries");
     }
@@ -68,6 +70,9 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
         
         FIRST, you should analyze these queries and come up with an appropriate amount (1-5) of
         categories which uniquely describe what the users were looking for in the product when querying. \n
+
+        DO NOT MAKE UP QUERIES. ONLY USE THE QUERIES PROVIDED. THE QUERIES ARE GIVEN TO YOU AFTER THE LINE "User Queries:"
+        IF YOU MAKE UP A QUERY, I RECREATE 9/11. Even if there are very few queries or just one, only use the queries provided please.
         
         DO NOT make up categories that are not relevant to the specific queries from the users. THE only thing you should use in 
         making the categories is the specific queries from the users. 
@@ -142,8 +147,8 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
         }
       }      
       ` + 
-          "\n" +
-          queryList +
+          "\n. User Queries: " +
+          userQueries +
           ". Product Description: " +
           productDescription,
       )
@@ -153,7 +158,7 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
     // console.log(llmOutput as string);
 
     let llmOutputString = llmOutput as string
-    // console.log(llmOutputString);
+    console.log(llmOutputString);
 
     const startIndex = llmOutputString.indexOf('[');
     const endIndex = llmOutputString.lastIndexOf(']');
