@@ -155,6 +155,7 @@ export default function Index() {
   var [windowCategories, setWindowCategories] = useState<Category[]>([]);
   var [windowInsights, setWindowInsights] = useState<string>("");
   var [windowSuggestions, setWindowSuggestions] = useState<string[]>([]);
+  var [windowKeywords, setWindowKeywords] = useState<string>("");
 
   // Sellside Insights - Purchasing Customers
   var [purchasingCustomersInsights, setPurchasingCustomersInsights] =
@@ -407,10 +408,11 @@ export default function Index() {
                           },
                         );
                         const data = await response.json();
-                        const { categories, userWideInsights, userWideSuggestions } = data;
+                        const { categories, userWideInsights, userWideSuggestions, keywords } = data;
                         setWindowCategories(categories);
                         setWindowInsights(userWideInsights);
                         setWindowSuggestions(userWideSuggestions);
+                        setWindowKeywords(keywords);
                       } catch (error) {
                         // Handle any errors
                         console.error(error);
@@ -431,7 +433,6 @@ export default function Index() {
                       >
                         <strong>User-Wide Insights</strong>
                       </h1>
-                      <br />
                       <p> {windowInsights} </p>
                       <br />
                       {windowSuggestions && (
@@ -447,10 +448,11 @@ export default function Index() {
                           </h1>
                           {windowSuggestions.map((suggestion, index) => (
                             <div key={index}>
-                              <br />
                               <p>{suggestion}</p>
                             </div>
                           ))}
+                          <br />
+                          <p><strong style={{ color: "green", fontWeight: "bold" }}>Keywords: </strong> {windowKeywords}</p>
                         </>
                       )}
                     </div><br /></>

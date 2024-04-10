@@ -204,6 +204,9 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
 
         YOU MUST GIVE AT LEAST 3 CONCRETE SUGGESTIONS
 
+        YOU MUST ALSO OUTPUT AT LEAST 3 KEYWORDS
+        These keywords should be words that the seller should include in their product description which target these queries
+
       IMPORTANT: You must format your output as a JSON value that adheres to a given "JSON Schema" instance.
 
       "JSON Schema" is a declarative language that allows you to annotate and validate JSON documents.
@@ -233,11 +236,20 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
             },
             "minItems": 3,
             "description": "List of concrete suggestions for the seller"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "A keyword relevant to the queries"
+            },
+            "minItems": 3,
+            "description": "List of keywords relevant to the queries"
           }
         },
-        "required": ["insights", "suggestions"]
+        "required": ["insights", "suggestions", "keywords"]
       }
-      
       
       DO NOT INCLUDE anything other that the json output. DO NOT INCLUDE the word 'json' at the start of your output or any QUOTES.
   
@@ -256,11 +268,13 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
     insightsString = insightsString.substring(start, end+1);
 
     let insightsJson = JSON.parse(insightsString);
-    const { insights, suggestions } = insightsJson;
+    const { insights, suggestions, keywords } = insightsJson;
 
-    console.log("\n-------------------------------\n", insights, "\n-------------------------------\n", suggestions);
+    console.log("\n-------------------------------\n", insights, "\n-------------------------------\n", suggestions, keywords);
+    const keywordsString = (keywords as string[]).join(", ");
+    console.log(keywordsString);
   
-    return { categories: response, userWideInsights: insights, userWideSuggestions: suggestions };
+    return { categories: response, userWideInsights: insights, userWideSuggestions: suggestions, keywords: keywordsString };
   } catch (err) {
     console.error("ERROR", err);
     return "ERROR";
