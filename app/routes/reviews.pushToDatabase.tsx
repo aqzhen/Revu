@@ -9,8 +9,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 export const action = async ({ request }: ActionFunctionArgs) => {
   const body = await request.json();
-  const { productId, reviews } = body;
-  addReviewsToSingleStore(Number(productId), reviews);
+  const { reviews } = body;
+  addReviewsToSingleStore(reviews);
   console.log("About to try to add chunks");
   addChunksToSingleStore(reviews);
 };

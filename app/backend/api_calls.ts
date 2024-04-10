@@ -30,12 +30,12 @@ export async function getProducts() {
   return json({ products: responseJson.data?.products?.edges });
 }
 
-export async function fetchJudgeReviews(productId: string) {
+export async function fetchJudgeReviews() {
   const judgeApiKey = process.env.JUDGE_API_KEY;
   const shopDomain = process.env.SHOPIFY_DOMAIN;
 
   const response = await fetch(
-    `https://judge.me/api/v1/reviews?external_id=${productId}&api_token=${judgeApiKey}&shop_domain=${shopDomain}&per_page=15`,
+    `https://judge.me/api/v1/reviews?api_token=${judgeApiKey}&shop_domain=${shopDomain}&per_page=100`,
     {
       method: "GET",
       headers: {

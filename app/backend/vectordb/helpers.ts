@@ -208,7 +208,6 @@ export async function addChunksToSingleStore(reviews: Review[]): Promise<void> {
 
 // Add reviews to the SingleStore database, also index review bodies using OpenAI embeddings
 export async function addReviewsToSingleStore(
-  productId: number,
   reviews: Review[],
 ): Promise<void> {
   for (const review of reviews) {
@@ -227,7 +226,7 @@ export async function addReviewsToSingleStore(
             body
         ) VALUES (
             ${review.reviewId},
-            ${productId},
+            ${review.productId},
             '${review.reviewerName.replace(/'/g, "\\'")}',
             ${review.reviewerExternalId},
             '${review.createdAt}',
