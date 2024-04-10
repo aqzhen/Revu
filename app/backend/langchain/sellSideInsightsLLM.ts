@@ -154,19 +154,14 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
       )
     ).content;
 
-    // console.log("in sell side llm and printing llm output");
-    // console.log(llmOutput as string);
-
     let llmOutputString = llmOutput as string
-    console.log(llmOutputString);
-
     const startIndex = llmOutputString.indexOf('[');
     const endIndex = llmOutputString.lastIndexOf(']');
     llmOutputString = llmOutputString.substring(startIndex, endIndex+1);
+    
+    console.log(llmOutputString);
 
     const response = JSON.parse(llmOutputString as string);
-    // console.log("JSON response");
-    // console.log(response);
 
     const categories : Category[] = [];
     if (response.length > 0) {
@@ -194,7 +189,7 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
       });
     }
 
-    const userWideInsights = (
+    let insightsString = (
       await llm.invoke(
         `You are given queries from users who did not purchase this proudct. You are also given the product description
         for this product. You are also given the categories of these queries which have been already identified.
@@ -206,6 +201,45 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
 
         EXAMPLE: The product description for [Product Name] does not mention xyz. Here are some possible rewordings to the product description which targets category x:
         - change "xxxx" to "yyyy"
+
+        YOU MUST GIVE AT LEAST 3 CONCRETE SUGGESTIONS
+
+      IMPORTANT: You must format your output as a JSON value that adheres to a given "JSON Schema" instance.
+
+      "JSON Schema" is a declarative language that allows you to annotate and validate JSON documents.
+
+      For example, the example "JSON Schema" instance {{"properties": {{"foo": {{"description": "a list of test words", "type": "array", "items": {{"type": "string"}}}}}}, "required": ["foo"]}}}}
+      would match an object with one required property, "foo". The "type" property specifies "foo" must be an "array", and the "description" property semantically describes it as "a list of test words". The items within "foo" must be strings.
+      Thus, the object {{"foo": ["bar", "baz"]}} is a well-formatted instance of this example "JSON Schema". The object {{"properties": {{"foo": ["bar", "baz"]}}}} is not well-formatted.
+
+      Your output will be parsed and type-checked according to the provided schema instance, so make sure all fields in your output match the schema exactly and there are no trailing commas!
+
+      Here is the JSON Schema instance your output must adhere to. Include the enclosing markdown codeblock:
+
+      {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "insights": {
+            "type": "string",
+            "description": "User-wide insights"
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "A specific suggestion for the seller"
+            },
+            "minItems": 3,
+            "description": "List of concrete suggestions for the seller"
+          }
+        },
+        "required": ["insights", "suggestions"]
+      }
+      
+      
+      DO NOT INCLUDE anything other that the json output. DO NOT INCLUDE the word 'json' at the start of your output or any QUOTES.
   
         ` +
             "\n" +
@@ -214,8 +248,19 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
             productDescription,
       )
     ).content;
+
+    insightsString = insightsString as string;
+    console.log(insightsString);
+    const start = insightsString.indexOf('{');
+    const end = insightsString.lastIndexOf('}');
+    insightsString = insightsString.substring(start, end+1);
+
+    let insightsJson = JSON.parse(insightsString);
+    const { insights, suggestions } = insightsJson;
+
+    console.log("\n-------------------------------\n", insights, "\n-------------------------------\n", suggestions);
   
-    return { categories: response, userWideInsights: userWideInsights };
+    return { categories: response, userWideInsights: insights, userWideSuggestions: suggestions };
   } catch (err) {
     console.error("ERROR", err);
     return "ERROR";

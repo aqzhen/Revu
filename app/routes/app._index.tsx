@@ -154,6 +154,7 @@ export default function Index() {
   // Sellside Insights - Window Shoppers
   var [windowCategories, setWindowCategories] = useState<Category[]>([]);
   var [windowInsights, setWindowInsights] = useState<string>("");
+  var [windowSuggestions, setWindowSuggestions] = useState<string[]>([]);
 
   // Sellside Insights - Purchasing Customers
   var [purchasingCustomersInsights, setPurchasingCustomersInsights] =
@@ -406,9 +407,10 @@ export default function Index() {
                           },
                         );
                         const data = await response.json();
-                        const { categories, userWideInsights } = data;
+                        const { categories, userWideInsights, userWideSuggestions } = data;
                         setWindowCategories(categories);
                         setWindowInsights(userWideInsights);
+                        setWindowSuggestions(userWideSuggestions);
                       } catch (error) {
                         // Handle any errors
                         console.error(error);
@@ -417,20 +419,42 @@ export default function Index() {
                   >
                     Get Insights
                   </Button>
-                  <div>
-                    <br />
-                    <h1
-                      style={{
-                        fontFamily: "Arial, sans-serif",
-                        color: "#0077b6",
-                        fontSize: 16,
-                      }}
-                    >
-                      <strong>User-Wide Insights</strong>
-                    </h1>
-                    <p> {windowInsights} </p>
-                  </div>
-                  <br />
+                  {windowInsights &&
+                    <><div>
+                      <br />
+                      <h1
+                        style={{
+                          fontFamily: "Arial, sans-serif",
+                          color: "#0077b6",
+                          fontSize: 20,
+                        }}
+                      >
+                        <strong>User-Wide Insights</strong>
+                      </h1>
+                      <br />
+                      <p> {windowInsights} </p>
+                      <br />
+                      {windowSuggestions && (
+                        <>
+                          <h1
+                            style={{
+                              fontFamily: "Arial, sans-serif",
+                              color: "red",
+                              fontSize: 16,
+                            }}
+                          >
+                            <strong>Action Items</strong>
+                          </h1>
+                          {windowSuggestions.map((suggestion, index) => (
+                            <div key={index}>
+                              <br />
+                              <p>{suggestion}</p>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div><br /></>
+                  }
                   {windowCategories &&
                     windowCategories.map((category) => (
                       <Card>
@@ -509,20 +533,21 @@ export default function Index() {
                   >
                     Get Insights
                   </Button>
-                  <div>
-                    <br />
-                    <h1
-                      style={{
-                        fontFamily: "Arial, sans-serif",
-                        color: "#0077b6",
-                        fontSize: 16,
-                      }}
-                    >
-                      <strong>User-Wide Insights</strong>
-                    </h1>
-                    <p> {purchasingCustomersInsights} </p>
-                  </div>
-                  <br />
+                  {purchasingCustomersInsights &&
+                    <><div>
+                      <br />
+                      <h1
+                        style={{
+                          fontFamily: "Arial, sans-serif",
+                          color: "#0077b6",
+                          fontSize: 16,
+                        }}
+                      >
+                        <strong>User-Wide Insights</strong>
+                      </h1>
+                      <p> {purchasingCustomersInsights} </p>
+                    </div><br /></>
+                  }
                   {purchasingCustomersCategories &&
                     purchasingCustomersCategories.map((category) => (
                       <Card>
