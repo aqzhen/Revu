@@ -104,7 +104,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   await updatePurchasedStatus();
 
   await initialize_agent();
-  const reviewsHashmap = await initializeReviews(domain, true);
+  const reviewsHashmap = await initializeReviews(domain, false);
 
   console.log("Loading products");
   const productData = await (await getProducts()).json();
@@ -156,6 +156,8 @@ export default function Index() {
   // Sellside Insights - Window Shoppers
   var [windowCategories, setWindowCategories] = useState<Category[]>([]);
   var [windowInsights, setWindowInsights] = useState<string>("");
+  var [windowSuggestions, setWindowSuggestions] = useState<string[]>([]);
+  var [windowKeywords, setWindowKeywords] = useState<string>("");
 
   // Sellside Insights - Purchasing Customers
   var [purchasingCustomersInsights, setPurchasingCustomersInsights] =
@@ -425,9 +427,16 @@ export default function Index() {
                           },
                         );
                         const data = await response.json();
-                        const { categories, userWideInsights } = data;
+                        const {
+                          categories,
+                          userWideInsights,
+                          userWideSuggestions,
+                          keywords,
+                        } = data;
                         setWindowCategories(categories);
                         setWindowInsights(userWideInsights);
+                        setWindowSuggestions(userWideSuggestions);
+                        setWindowKeywords(keywords);
                       } catch (error) {
                         // Handle any errors
                         console.error(error);
@@ -436,20 +445,52 @@ export default function Index() {
                   >
                     Get Insights
                   </Button>
-                  <div>
-                    <br />
-                    <h1
-                      style={{
-                        fontFamily: "Arial, sans-serif",
-                        color: "#0077b6",
-                        fontSize: 16,
-                      }}
-                    >
-                      <strong>User-Wide Insights</strong>
-                    </h1>
-                    <p> {windowInsights} </p>
-                  </div>
-                  <br />
+                  {windowInsights && (
+                    <>
+                      <div>
+                        <br />
+                        <h1
+                          style={{
+                            fontFamily: "Arial, sans-serif",
+                            color: "#0077b6",
+                            fontSize: 20,
+                          }}
+                        >
+                          <strong>User-Wide Insights</strong>
+                        </h1>
+                        <p> {windowInsights} </p>
+                        <br />
+                        {windowSuggestions && (
+                          <>
+                            <h1
+                              style={{
+                                fontFamily: "Arial, sans-serif",
+                                color: "red",
+                                fontSize: 16,
+                              }}
+                            >
+                              <strong>Action Items</strong>
+                            </h1>
+                            {windowSuggestions.map((suggestion, index) => (
+                              <div key={index}>
+                                <p>{suggestion}</p>
+                              </div>
+                            ))}
+                            <br />
+                            <p>
+                              <strong
+                                style={{ color: "green", fontWeight: "bold" }}
+                              >
+                                Keywords:{" "}
+                              </strong>{" "}
+                              {windowKeywords}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                      <br />
+                    </>
+                  )}
                   {windowCategories &&
                     windowCategories.map((category) => (
                       <Card>
