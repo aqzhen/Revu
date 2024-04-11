@@ -17,6 +17,7 @@ export type Query = {
   queryId: number;
   query: string;
   userId: number;
+  semanticEmbedding?: string;
 };
 
 declare global {
@@ -24,8 +25,8 @@ declare global {
 }
 
 export type Category = {
-  category: string,
-  queries: Query[],
-  summary: string,
-  suggestions: string
-}
+  category: string;
+  queries: Query[];
+  summary: string;
+  suggestions: string;
+};

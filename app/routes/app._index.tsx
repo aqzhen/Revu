@@ -6,6 +6,7 @@ import {
   Card,
   DataTable,
   Page,
+  RangeSlider,
   Tabs,
 } from "@shopify/polaris";
 import { useCallback, useEffect, useState } from "react";
@@ -103,7 +104,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   await updatePurchasedStatus();
 
   await initialize_agent();
-  const reviewsHashmap = await initializeReviews(domain, false);
+  const reviewsHashmap = await initializeReviews(domain, true);
 
   console.log("Loading products");
   const productData = await (await getProducts()).json();
@@ -126,6 +127,7 @@ export default function Index() {
   // Miscellanous
   var [selectedTab, setSelectedTab] = useState<number>(0);
   var [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [sliderRangeValue, setsliderRangeValue] = useState(8);
 
   // Products
   const [products, setProducts] = useState<any[]>([]);
@@ -154,8 +156,6 @@ export default function Index() {
   // Sellside Insights - Window Shoppers
   var [windowCategories, setWindowCategories] = useState<Category[]>([]);
   var [windowInsights, setWindowInsights] = useState<string>("");
-  var [windowSuggestions, setWindowSuggestions] = useState<string[]>([]);
-  var [windowKeywords, setWindowKeywords] = useState<string>("");
 
   // Sellside Insights - Purchasing Customers
   var [purchasingCustomersInsights, setPurchasingCustomersInsights] =
@@ -328,6 +328,11 @@ export default function Index() {
     setReviewPromptData([]);
   };
 
+  const handleRangeSliderChange = useCallback(
+    (value: number) => setsliderRangeValue(value),
+    [],
+  );
+
   // PRODUCTS
   // get products data on load
   const productsData = useLoaderData<typeof loader>();
@@ -384,17 +389,29 @@ export default function Index() {
           <Tabs tabs={tabs} selected={selectedTab} onSelect={handleTabChange}>
             <Card>
               <p>Selected Product ID: {selectedProduct}</p>
+              {selectedProduct ? null : (
+                <p style={{ color: "red" }}>Please select a product</p>
+              )}
             </Card>
 
             <Card>
               {selectedTab === 0 && (
                 <>
+                  <RangeSlider
+                    label="Toggle Category Granularity (Select 1 for auto-granularity)"
+                    value={sliderRangeValue}
+                    min={1}
+                    max={10}
+                    onChange={handleRangeSliderChange}
+                    output
+                  />
                   <Button
                     onClick={async () => {
                       try {
                         const requestData = {
                           productId: selectedProduct,
                           selector: "windowShoppers",
+                          k: sliderRangeValue,
                         };
 
                         const response = await fetch(
@@ -408,11 +425,9 @@ export default function Index() {
                           },
                         );
                         const data = await response.json();
-                        const { categories, userWideInsights, userWideSuggestions, keywords } = data;
+                        const { categories, userWideInsights } = data;
                         setWindowCategories(categories);
                         setWindowInsights(userWideInsights);
-                        setWindowSuggestions(userWideSuggestions);
-                        setWindowKeywords(keywords);
                       } catch (error) {
                         // Handle any errors
                         console.error(error);
@@ -421,42 +436,20 @@ export default function Index() {
                   >
                     Get Insights
                   </Button>
-                  {windowInsights &&
-                    <><div>
-                      <br />
-                      <h1
-                        style={{
-                          fontFamily: "Arial, sans-serif",
-                          color: "#0077b6",
-                          fontSize: 20,
-                        }}
-                      >
-                        <strong>User-Wide Insights</strong>
-                      </h1>
-                      <p> {windowInsights} </p>
-                      <br />
-                      {windowSuggestions && (
-                        <>
-                          <h1
-                            style={{
-                              fontFamily: "Arial, sans-serif",
-                              color: "red",
-                              fontSize: 16,
-                            }}
-                          >
-                            <strong>Action Items</strong>
-                          </h1>
-                          {windowSuggestions.map((suggestion, index) => (
-                            <div key={index}>
-                              <p>{suggestion}</p>
-                            </div>
-                          ))}
-                          <br />
-                          <p><strong style={{ color: "green", fontWeight: "bold" }}>Keywords: </strong> {windowKeywords}</p>
-                        </>
-                      )}
-                    </div><br /></>
-                  }
+                  <div>
+                    <br />
+                    <h1
+                      style={{
+                        fontFamily: "Arial, sans-serif",
+                        color: "#0077b6",
+                        fontSize: 16,
+                      }}
+                    >
+                      <strong>User-Wide Insights</strong>
+                    </h1>
+                    <p> {windowInsights} </p>
+                  </div>
+                  <br />
                   {windowCategories &&
                     windowCategories.map((category) => (
                       <Card>
@@ -505,12 +498,21 @@ export default function Index() {
               )}
               {selectedTab === 1 && (
                 <>
+                  <RangeSlider
+                    label="Toggle Category Granularity (Select 1 for auto-granularity)"
+                    value={sliderRangeValue}
+                    min={1}
+                    max={10}
+                    onChange={handleRangeSliderChange}
+                    output
+                  />
                   <Button
                     onClick={async () => {
                       try {
                         const requestData = {
                           productId: selectedProduct,
                           selector: "purchasingCustomers",
+                          k: sliderRangeValue,
                         };
 
                         const response = await fetch(
@@ -535,21 +537,20 @@ export default function Index() {
                   >
                     Get Insights
                   </Button>
-                  {purchasingCustomersInsights &&
-                    <><div>
-                      <br />
-                      <h1
-                        style={{
-                          fontFamily: "Arial, sans-serif",
-                          color: "#0077b6",
-                          fontSize: 16,
-                        }}
-                      >
-                        <strong>User-Wide Insights</strong>
-                      </h1>
-                      <p> {purchasingCustomersInsights} </p>
-                    </div><br /></>
-                  }
+                  <div>
+                    <br />
+                    <h1
+                      style={{
+                        fontFamily: "Arial, sans-serif",
+                        color: "#0077b6",
+                        fontSize: 16,
+                      }}
+                    >
+                      <strong>User-Wide Insights</strong>
+                    </h1>
+                    <p> {purchasingCustomersInsights} </p>
+                  </div>
+                  <br />
                   {purchasingCustomersCategories &&
                     purchasingCustomersCategories.map((category) => (
                       <Card>

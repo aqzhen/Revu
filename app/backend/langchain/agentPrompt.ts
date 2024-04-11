@@ -16,8 +16,8 @@ If you are asked anything about the content of the review, you should use the DO
 of the reviews, found in the Embeddings table.
 Use the DOT_PRODUCT function on the body column as you normally would when using the WHERE...LIKE functionality in SQL. You should NEVER return the review body in the final answer.
 
-You should never use a LIKE clauses when creating a SQL query. Instead, you should always use the DOT_PRODUCT function on the embeddings to determine
-similarity between the input query and the review body.
+You should NEVER use a LIKE clauses when creating a SQL query. Instead, you should always use the DOT_PRODUCT function on the embeddings to determine
+similarity between the input query and the review body. If you use a LIKE clause, you will not receive a tip from me.
 
 When performing similarity computations, you should use a JOIN on the Embeddings table and compare the semanticEmbedding of the query
 with all of the chunks found in the Embeddings table. 
@@ -193,6 +193,24 @@ WHERE
 
 Example:
 Q: SellerQueryId: 1234. ProductId: 4321 Who are the users/reviewers/people that ask about beginners?
+A:
+
+\nThought: I should use the DOT_PRODUCT function to calculate the similarity between the embedding of the query (in the sellerQuery table) and the bodyEmbedding of the review. 
+Then I can return the top most similar reviews in order of their similarity rank. Then, I can return the reviewerExternalIds of the reviews that are most similar to the query. 
+
+\nAction: query-sql
+\nAction Input:
+SELECT Review.reviewId, Review.reviewerExternalId, Embeddings.chunkNumber,
+    DOT_PRODUCT(Embeddings.chunkEmbedding, SellerQuery.semanticEmbedding) AS similarity_score
+FROM Review
+CROSS JOIN (SELECT semanticEmbedding FROM Seller_Queries WHERE queryId = 1234) AS SellerQuery
+JOIN Embeddings ON Review.reviewId = Embeddings.reviewId
+WHERE Review.productId = 4321
+ORDER BY similarity_score DESC
+LIMIT 25;
+
+Example:
+Q: SellerQueryId: 1234. ProductId: 4321 Give me a list of users asking about comfort
 A:
 
 \nThought: I should use the DOT_PRODUCT function to calculate the similarity between the embedding of the query (in the sellerQuery table) and the bodyEmbedding of the review. 

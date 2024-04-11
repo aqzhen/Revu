@@ -4,8 +4,12 @@ import { SqlDatabase } from "langchain/sql_db";
 import { DataSource } from "typeorm";
 import { Category, Query, Review } from "~/globals";
 import { getProductDescription } from "../api_calls";
+import { getQueryClusters } from "../clustering/queryClustering";
 
-export async function call_windowShoppersInsightsLLM(productId: number) {
+export async function call_windowShoppersInsightsLLM(
+  productId: number,
+  k?: number,
+) {
   // parse result to perform additional queries and LLM calls
   // if results has reviewIds and similarity_score, then we perform query to grab bodies and feed into LLM
   console.log("hello");
@@ -44,149 +48,267 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
     console.log(userQueries);
 
     const parsedUserQueries = JSON.parse(userQueries);
-    const queryList: Query[] = parsedUserQueries.map((query: any) => {
-      return {
-        queryId: query.queryId,
-        query: query.query,
-        userId: query.userId,
-      };
-    });
 
-    console.log(queryList);
+    const semanticEmbeddings = await db.run(
+      `SELECT semanticEmbedding
+      FROM Queries
+      WHERE productId = ${productId} AND userId IN (SELECT userId FROM Purchases WHERE productId = ${productId} AND purchased = 0)
+      `,
+    );
+
+    const parsedSemanticEmbeddings = JSON.parse(semanticEmbeddings);
+
+    const queryList: Query[] = parsedUserQueries.map(
+      (query: any, index: number) => {
+        return {
+          queryId: query.queryId,
+          query: query.query,
+          userId: query.userId,
+          semanticEmbedding: parsedSemanticEmbeddings[index].semanticEmbedding,
+        };
+      },
+    );
 
     if (queryList.length == 0) {
       console.log("No queries");
+      return null;
     }
 
     // Getting product description
     const productDescription = await getProductDescription(productId);
-    const {description} = productDescription;
+    const { description } = productDescription;
     console.log(description);
 
-    llmOutput = (
-      await llm.invoke(
-        `You are given the following queries that a user has made on a product. These users have not
-        purchased the product. \n 
-        
-        FIRST, you should analyze these queries and come up with an appropriate amount (1-5) of
-        categories which uniquely describe what the users were looking for in the product when querying. \n
+    if (k && k > 1) {
+      // Clustering Logic to get Query Categories
+      const categoriesString = getQueryClusters(queryList, k);
 
-        DO NOT MAKE UP QUERIES. ONLY USE THE QUERIES PROVIDED. THE QUERIES ARE GIVEN TO YOU AFTER THE LINE "User Queries:"
-        IF YOU MAKE UP A QUERY, I RECREATE 9/11. Even if there are very few queries or just one, only use the queries provided please.
-        
-        DO NOT make up categories that are not relevant to the specific queries from the users. THE only thing you should use in 
-        making the categories is the specific queries from the users. 
-        
-        YOU SHOULD USE EVERY SINGLE QUERY in some category. IF A QUERY DOES NOT FALL UNDER A SPECIFIC CATEGORY, you can include in a 
-        category called "UNCATEGORIZED"\n
-        
-        Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.\n
-        
-        IMPORTANT: Provide 1 suggestion for how the seller should change their product description to better cater to this category
-        of users. YOU MUST specifically point out what is lacking in the current product description and then provide a better
-        alternative or addition. BE SPECIFIC AND USE THE PRODUCT DESCRIPTION GIVEN TO YOU. YOU MUST REFERENCE SOMETHING SPECIFIC FROM THE PRODUCT DESCRIPTION!!!!!\n
+      console.log(categoriesString);
 
-        IMPORTANT: You must format your output as a JSON value that adheres to a given "JSON Schema" instance.
-
-      "JSON Schema" is a declarative language that allows you to annotate and validate JSON documents.
-
-      For example, the example "JSON Schema" instance {{"properties": {{"foo": {{"description": "a list of test words", "type": "array", "items": {{"type": "string"}}}}}}, "required": ["foo"]}}}}
-      would match an object with one required property, "foo". The "type" property specifies "foo" must be an "array", and the "description" property semantically describes it as "a list of test words". The items within "foo" must be strings.
-      Thus, the object {{"foo": ["bar", "baz"]}} is a well-formatted instance of this example "JSON Schema". The object {{"properties": {{"foo": ["bar", "baz"]}}}} is not well-formatted.
-
-      Your output will be parsed and type-checked according to the provided schema instance, so make sure all fields in your output match the schema exactly and there are no trailing commas!
-
-      Here is the JSON Schema instance your output must adhere to. Include the enclosing markdown codeblock:
-
-      DO NOT INCLUDE anything other that the json output. DO NOT INCLUDE the word 'json' at the start of your output or any QUOTES.
-
-      {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "category": {
-              "type": "string",
-              "description": "Represents the category of the query"
-            },
-            "queries": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "userId": {
-                    "type": "string",
-                    "description": "Represents the userId of the user who made this query"
-                  },
-                  "queryId": {
-                    "type": "string",
-                    "description": "Represents the queryId of this query"
-                  },
-                  "query": {
-                    "type": "string",
-                    "description": "Represents the body of this query"
-                  }
-                },
-                "required": ["userId", "queryId", "query"],
-                "additionalProperties": false
+      llmOutput = (
+        await llm.invoke(
+          `You are given the following queries that a user has made on a product. These users have not
+          purchased the product. You are also given the categories that each queryId must fall under. The categories are given to you
+          after the line "Categories:" \n 
+          
+          FIRST, you should analyze these queries and come up with an appropriate category name for each category
+          which uniquely describe what the users were looking for in the product when querying. \n
+  
+          DO NOT MAKE UP QUERIES. ONLY USE THE QUERIES PROVIDED. THE QUERIES ARE GIVEN TO YOU AFTER THE LINE "User Queries:"
+          IF YOU MAKE UP A QUERY, I RECREATE 9/11. Even if there are very few queries or just one, only use the queries provided please.
+          
+          YOU SHOULD USE EVERY SINGLE QUERY in some category.\n
+          
+          Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.\n
+          
+          IMPORTANT: Provide 1 suggestion for how the seller should change their product description to better cater to this category
+          of users. YOU MUST specifically point out what is lacking in the current product description and then provide a better
+          alternative or addition. BE SPECIFIC AND USE THE PRODUCT DESCRIPTION GIVEN TO YOU. YOU MUST REFERENCE SOMETHING SPECIFIC FROM THE PRODUCT DESCRIPTION!!!!!\n
+  
+          IMPORTANT: You must format your output as a JSON value that adheres to a given "JSON Schema" instance.
+  
+        "JSON Schema" is a declarative language that allows you to annotate and validate JSON documents.
+  
+        For example, the example "JSON Schema" instance {{"properties": {{"foo": {{"description": "a list of test words", "type": "array", "items": {{"type": "string"}}}}}}, "required": ["foo"]}}}}
+        would match an object with one required property, "foo". The "type" property specifies "foo" must be an "array", and the "description" property semantically describes it as "a list of test words". The items within "foo" must be strings.
+        Thus, the object {{"foo": ["bar", "baz"]}} is a well-formatted instance of this example "JSON Schema". The object {{"properties": {{"foo": ["bar", "baz"]}}}} is not well-formatted.
+  
+        Your output will be parsed and type-checked according to the provided schema instance, so make sure all fields in your output match the schema exactly and there are no trailing commas!
+  
+        Here is the JSON Schema instance your output must adhere to. Include the enclosing markdown codeblock:
+  
+        DO NOT INCLUDE anything other that the json output. DO NOT INCLUDE the word 'json' at the start of your output or any QUOTES.
+  
+        {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string",
+                "description": "Represents the category of the query"
               },
-              "description": "Array of queries"
+              "queries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string",
+                      "description": "Represents the userId of the user who made this query"
+                    },
+                    "queryId": {
+                      "type": "string",
+                      "description": "Represents the queryId of this query"
+                    },
+                    "query": {
+                      "type": "string",
+                      "description": "Represents the body of this query"
+                    }
+                  },
+                  "required": ["userId", "queryId", "query"],
+                  "additionalProperties": false
+                },
+                "description": "Array of queries"
+              },
+              "summary": {
+                "type": "string",
+                "description": "Represents the summary of the queries"
+              },
+              "suggestions": {
+                "type": "string",
+                "description": "Represents suggestions related to the queries"
+              }
             },
-            "summary": {
-              "type": "string",
-              "description": "Represents the summary of the queries"
+            "required": ["category", "queries", "summary", "suggestions"],
+            "additionalProperties": false
+          }
+        }      
+        ` +
+            "\n. User Queries: " +
+            userQueries +
+            ". Product Description: " +
+            productDescription +
+            "\n. Categories: " +
+            categoriesString,
+        )
+      ).content;
+    } else {
+      llmOutput = (
+        await llm.invoke(
+          `You are given the following queries that a user has made on a product. These users have not
+          purchased the product. \n 
+          
+          FIRST, you should analyze these queries and come up with an appropriate amount (1-5) of
+          categories which uniquely describe what the users were looking for in the product when querying. \n
+  
+          DO NOT MAKE UP QUERIES. ONLY USE THE QUERIES PROVIDED. THE QUERIES ARE GIVEN TO YOU AFTER THE LINE "User Queries:"
+          IF YOU MAKE UP A QUERY, I RECREATE 9/11. Even if there are very few queries or just one, only use the queries provided please.
+          
+          DO NOT make up categories that are not relevant to the specific queries from the users. THE only thing you should use in 
+          making the categories is the specific queries from the users. 
+          
+          YOU SHOULD USE EVERY SINGLE QUERY in some category. IF A QUERY DOES NOT FALL UNDER A SPECIFIC CATEGORY, you can include in a 
+          category called "UNCATEGORIZED"\n
+          
+          Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.\n
+          
+          IMPORTANT: Provide 1 suggestion for how the seller should change their product description to better cater to this category
+          of users. YOU MUST specifically point out what is lacking in the current product description and then provide a better
+          alternative or addition. BE SPECIFIC AND USE THE PRODUCT DESCRIPTION GIVEN TO YOU. YOU MUST REFERENCE SOMETHING SPECIFIC FROM THE PRODUCT DESCRIPTION!!!!!\n
+  
+          IMPORTANT: You must format your output as a JSON value that adheres to a given "JSON Schema" instance.
+  
+        "JSON Schema" is a declarative language that allows you to annotate and validate JSON documents.
+  
+        For example, the example "JSON Schema" instance {{"properties": {{"foo": {{"description": "a list of test words", "type": "array", "items": {{"type": "string"}}}}}}, "required": ["foo"]}}}}
+        would match an object with one required property, "foo". The "type" property specifies "foo" must be an "array", and the "description" property semantically describes it as "a list of test words". The items within "foo" must be strings.
+        Thus, the object {{"foo": ["bar", "baz"]}} is a well-formatted instance of this example "JSON Schema". The object {{"properties": {{"foo": ["bar", "baz"]}}}} is not well-formatted.
+  
+        Your output will be parsed and type-checked according to the provided schema instance, so make sure all fields in your output match the schema exactly and there are no trailing commas!
+  
+        Here is the JSON Schema instance your output must adhere to. Include the enclosing markdown codeblock:
+  
+        DO NOT INCLUDE anything other that the json output. DO NOT INCLUDE the word 'json' at the start of your output or any QUOTES.
+  
+        {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string",
+                "description": "Represents the category of the query"
+              },
+              "queries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string",
+                      "description": "Represents the userId of the user who made this query"
+                    },
+                    "queryId": {
+                      "type": "string",
+                      "description": "Represents the queryId of this query"
+                    },
+                    "query": {
+                      "type": "string",
+                      "description": "Represents the body of this query"
+                    }
+                  },
+                  "required": ["userId", "queryId", "query"],
+                  "additionalProperties": false
+                },
+                "description": "Array of queries"
+              },
+              "summary": {
+                "type": "string",
+                "description": "Represents the summary of the queries"
+              },
+              "suggestions": {
+                "type": "string",
+                "description": "Represents suggestions related to the queries"
+              }
             },
-            "suggestions": {
-              "type": "string",
-              "description": "Represents suggestions related to the queries"
-            }
-          },
-          "required": ["category", "queries", "summary", "suggestions"],
-          "additionalProperties": false
-        }
-      }      
-      ` + 
-          "\n. User Queries: " +
-          userQueries +
-          ". Product Description: " +
-          productDescription,
-      )
-    ).content;
+            "required": ["category", "queries", "summary", "suggestions"],
+            "additionalProperties": false
+          }
+        }      
+        ` +
+            "\n. User Queries: " +
+            userQueries +
+            ". Product Description: " +
+            productDescription,
+        )
+      ).content;
+    }
 
-    let llmOutputString = llmOutput as string
-    const startIndex = llmOutputString.indexOf('[');
-    const endIndex = llmOutputString.lastIndexOf(']');
-    llmOutputString = llmOutputString.substring(startIndex, endIndex+1);
-    
+    let llmOutputString = llmOutput as string;
+    const startIndex = llmOutputString.indexOf("[");
+    const endIndex = llmOutputString.lastIndexOf("]");
+    llmOutputString = llmOutputString.substring(startIndex, endIndex + 1);
+
     console.log(llmOutputString);
 
     const response = JSON.parse(llmOutputString as string);
 
-    const categories : Category[] = [];
+    const categories: Category[] = [];
     if (response.length > 0) {
-      response.forEach((element: { category: any; summary: any; suggestions: any; queries: { queryId: any; query: any; userId: any; }[]; }) => {
-        let name = element.category;
-        let summary = element.summary;
-        let suggestions = element.suggestions;
-        let queries : Query[] = []
-        element.queries.forEach((query: { queryId: any; query: any; userId: any; }) => {
-          let q : Query = {
-            queryId: query.queryId,
-            query: query.query,
-            userId: query.userId,
-          }
-          queries.push(q);
-        });
-        
-        let c : Category = {
-          category: name,
-          queries: queries,
-          summary: summary,
-          suggestions: suggestions
-        }
-        categories.push(c);
-      });
+      response.forEach(
+        (element: {
+          category: any;
+          summary: any;
+          suggestions: any;
+          queries: { queryId: any; query: any; userId: any }[];
+        }) => {
+          let name = element.category;
+          let summary = element.summary;
+          let suggestions = element.suggestions;
+          let queries: Query[] = [];
+          element.queries.forEach(
+            (query: { queryId: any; query: any; userId: any }) => {
+              let q: Query = {
+                queryId: query.queryId,
+                query: query.query,
+                userId: query.userId,
+              };
+              queries.push(q);
+            },
+          );
+
+          let c: Category = {
+            category: name,
+            queries: queries,
+            summary: summary,
+            suggestions: suggestions,
+          };
+          categories.push(c);
+        },
+      );
     }
 
     let insightsString = (
@@ -254,34 +376,48 @@ export async function call_windowShoppersInsightsLLM(productId: number) {
       DO NOT INCLUDE anything other that the json output. DO NOT INCLUDE the word 'json' at the start of your output or any QUOTES.
   
         ` +
-            "\n" +
-            userQueries +
-            ". Product Description: " +
-            productDescription,
+          "\n" +
+          userQueries +
+          ". Product Description: " +
+          productDescription,
       )
     ).content;
 
     insightsString = insightsString as string;
     console.log(insightsString);
-    const start = insightsString.indexOf('{');
-    const end = insightsString.lastIndexOf('}');
-    insightsString = insightsString.substring(start, end+1);
+    const start = insightsString.indexOf("{");
+    const end = insightsString.lastIndexOf("}");
+    insightsString = insightsString.substring(start, end + 1);
 
     let insightsJson = JSON.parse(insightsString);
     const { insights, suggestions, keywords } = insightsJson;
 
-    console.log("\n-------------------------------\n", insights, "\n-------------------------------\n", suggestions, keywords);
+    console.log(
+      "\n-------------------------------\n",
+      insights,
+      "\n-------------------------------\n",
+      suggestions,
+      keywords,
+    );
     const keywordsString = (keywords as string[]).join(", ");
     console.log(keywordsString);
-  
-    return { categories: response, userWideInsights: insights, userWideSuggestions: suggestions, keywords: keywordsString };
+
+    return {
+      categories: response,
+      userWideInsights: insights,
+      userWideSuggestions: suggestions,
+      keywords: keywordsString,
+    };
   } catch (err) {
     console.error("ERROR", err);
     return "ERROR";
   }
 }
 
-export async function call_purchasingCustomersInsightsLLM(productId: number) {
+export async function call_purchasingCustomersInsightsLLM(
+  productId: number,
+  k?: number,
+) {
   // parse result to perform additional queries and LLM calls
   // if results has reviewIds and similarity_score, then we perform query to grab bodies and feed into LLM
   let llmOutput;
@@ -319,15 +455,27 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
     console.log(userQueries);
 
     const parsedUserQueries = JSON.parse(userQueries);
-    const queryList: Query[] = parsedUserQueries.map((query: any) => {
-      return {
-        queryId: query.queryId,
-        query: query.query,
-        userId: query.userId,
-      };
-    });
 
-    console.log(queryList);
+    const semanticEmbeddings = await db.run(
+      `SELECT semanticEmbedding
+      FROM Queries
+      WHERE productId = ${productId} AND userId IN (SELECT userId FROM Purchases WHERE productId = ${productId} AND purchased = 1)
+      `,
+    );
+
+    const parsedSemanticEmbeddings = JSON.parse(semanticEmbeddings);
+
+    const queryList: Query[] = parsedUserQueries.map(
+      (query: any, index: number) => {
+        return {
+          queryId: query.queryId,
+          query: query.query,
+          userId: query.userId,
+          semanticEmbedding: parsedSemanticEmbeddings[index].semanticEmbedding,
+        };
+      },
+    );
+
     if (queryList.length === 0) {
       console.log("here");
       return "There are no queries yet!";
@@ -362,21 +510,28 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
 
     const productDescription = await getProductDescription(productId);
 
-    llmOutput = (
-      await llm.invoke(
-        `You are given the following queries that a user has made on a product. These users have
-        purchased the product. \n 
+    if (k && k > 1) {
+      // Clustering Logic to get Query Categories
+      const categoriesString = getQueryClusters(queryList, k);
+
+      console.log(categoriesString);
+
+      llmOutput = (
+        await llm.invoke(
+          `
+        You are given the following queries that a user has made on a product. These users have 
+        purchased the product. You are also given the categories that each queryId must fall under. The categories are given to you
+        after the line "Categories:" \n 
         
-        FIRST, you should analyze these queries and come up with an appropriate amount (1-5) of
-        categories which uniquely describe what the users were looking for in the product when querying. \n
+        FIRST, you should analyze these queries and come up with an appropriate category name for each category
+        which uniquely describe what the users were looking for in the product when querying. \n
         
-        DO NOT make up categories that are not relevant to the specific queries from the users. THE only thing you should use in 
-        making the categories is the specific queries from the users. 
-        
-        YOU SHOULD USE EVERY SINGLE QUERY in some category. IF A QUERY DOES NOT FALL UNDER A SPECIFIC CATEGORY, you can include in a 
-        category called "UNCATEGORIZED"\n
+        YOU SHOULD USE EVERY SINGLE QUERY in some category."\n
         
         Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.\n
+
+        Next, you are also given the reviews of the users who purchased the product. You should analyze these reviews and come up with insights on 
+        what the users thought of the product, especially in relation to the queries they made. \n
         
         IMPORTANT: Provide 1 suggestion for how the seller should change their product description to better cater to this category
         of users. YOU MUST specifically point out what is lacking in the current product description and then provide a better
@@ -404,7 +559,7 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
           "properties": {
             "category": {
               "type": "string",
-              "description": "Represents the category of the query"
+              "description": "Represents the category of the query. This is also where your analysis of the review data should be included"
             },
             "queries": {
               "type": "array",
@@ -443,48 +598,149 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
         }
       }      
       ` +
-          "\n" +
-          userQueries +
-          userReviews +
-          ". Product Description: " +
-          productDescription,
-      )
-    ).content;
+            "\n" +
+            userQueries +
+            userReviews +
+            ". Product Description: " +
+            productDescription +
+            ". Categories: " +
+            categoriesString,
+        )
+      ).content;
+    } else {
+      llmOutput = (
+        await llm.invoke(
+          `You are given the following queries that a user has made on a product. These users have
+          purchased the product. \n 
+          
+          FIRST, you should analyze these queries and come up with an appropriate amount (1-5) of
+          categories which uniquely describe what the users were looking for in the product when querying. \n
+          
+          DO NOT make up categories that are not relevant to the specific queries from the users. THE only thing you should use in 
+          making the categories is the specific queries from the users. 
+          
+          YOU SHOULD USE EVERY SINGLE QUERY in some category. IF A QUERY DOES NOT FALL UNDER A SPECIFIC CATEGORY, you can include in a 
+          category called "UNCATEGORIZED"\n
+          
+          Additionally, for each category, output a small, digestable summary of the category and what the users' queries in this category mean.\n
+          
+          IMPORTANT: Provide 1 suggestion for how the seller should change their product description to better cater to this category
+          of users. YOU MUST specifically point out what is lacking in the current product description and then provide a better
+          alternative or addition. BE SPECIFIC AND USE THE PRODUCT DESCRIPTION GIVEN TO YOU. YOU MUST REFERENCE SOMETHING SPECIFIC FROM THE PRODUCT DESCRIPTION!!!!!\n
+  
+          IMPORTANT: You must format your output as a JSON value that adheres to a given "JSON Schema" instance.
+  
+        "JSON Schema" is a declarative language that allows you to annotate and validate JSON documents.
+  
+        For example, the example "JSON Schema" instance {{"properties": {{"foo": {{"description": "a list of test words", "type": "array", "items": {{"type": "string"}}}}}}, "required": ["foo"]}}}}
+        would match an object with one required property, "foo". The "type" property specifies "foo" must be an "array", and the "description" property semantically describes it as "a list of test words". The items within "foo" must be strings.
+        Thus, the object {{"foo": ["bar", "baz"]}} is a well-formatted instance of this example "JSON Schema". The object {{"properties": {{"foo": ["bar", "baz"]}}}} is not well-formatted.
+  
+        Your output will be parsed and type-checked according to the provided schema instance, so make sure all fields in your output match the schema exactly and there are no trailing commas!
+  
+        Here is the JSON Schema instance your output must adhere to. Include the enclosing markdown codeblock:
+  
+        DO NOT INCLUDE anything other that the json output. DO NOT INCLUDE the word 'json' at the start of your output or any QUOTES.
+  
+        {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string",
+                "description": "Represents the category of the query"
+              },
+              "queries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string",
+                      "description": "Represents the userId of the user who made this query"
+                    },
+                    "queryId": {
+                      "type": "string",
+                      "description": "Represents the queryId of this query"
+                    },
+                    "query": {
+                      "type": "string",
+                      "description": "Represents the body of this query"
+                    }
+                  },
+                  "required": ["userId", "queryId", "query"],
+                  "additionalProperties": false
+                },
+                "description": "Array of queries"
+              },
+              "summary": {
+                "type": "string",
+                "description": "Represents the summary of the queries"
+              },
+              "suggestions": {
+                "type": "string",
+                "description": "Represents suggestions related to the queries"
+              }
+            },
+            "required": ["category", "queries", "summary", "suggestions"],
+            "additionalProperties": false
+          }
+        }      
+        ` +
+            "\n" +
+            userQueries +
+            userReviews +
+            ". Product Description: " +
+            productDescription,
+        )
+      ).content;
+    }
 
-    let llmOutputString = llmOutput as string
+    let llmOutputString = llmOutput as string;
     // console.log(llmOutputString);
 
-    const startIndex = llmOutputString.indexOf('[');
-    const endIndex = llmOutputString.lastIndexOf(']');
-    llmOutputString = llmOutputString.substring(startIndex, endIndex+1);
+    const startIndex = llmOutputString.indexOf("[");
+    const endIndex = llmOutputString.lastIndexOf("]");
+    llmOutputString = llmOutputString.substring(startIndex, endIndex + 1);
 
     const response = JSON.parse(llmOutputString as string);
     // console.log("JSON response");
     // console.log(response);
 
-    const categories : Category[] = [];
-    response.forEach((element: { category: any; summary: any; suggestions: any; queries: { queryId: any; query: any; userId: any; }[]; }) => {
-      let name = element.category;
-      let summary = element.summary;
-      let suggestions = element.suggestions;
-      let queries : Query[] = []
-      element.queries.forEach((query: { queryId: any; query: any; userId: any; }) => {
-        let q : Query = {
-          queryId: query.queryId,
-          query: query.query,
-          userId: query.userId,
-        }
-        queries.push(q);
-      });
-      
-      let c : Category = {
-        category: name,
-        queries: queries,
-        summary: summary,
-        suggestions: suggestions
-      }
-      categories.push(c);
-    });
+    const categories: Category[] = [];
+    response.forEach(
+      (element: {
+        category: any;
+        summary: any;
+        suggestions: any;
+        queries: { queryId: any; query: any; userId: any }[];
+      }) => {
+        let name = element.category;
+        let summary = element.summary;
+        let suggestions = element.suggestions;
+        let queries: Query[] = [];
+        element.queries.forEach(
+          (query: { queryId: any; query: any; userId: any }) => {
+            let q: Query = {
+              queryId: query.queryId,
+              query: query.query,
+              userId: query.userId,
+            };
+            queries.push(q);
+          },
+        );
+
+        let c: Category = {
+          category: name,
+          queries: queries,
+          summary: summary,
+          suggestions: suggestions,
+        };
+        categories.push(c);
+      },
+    );
 
     console.log(categories);
 
@@ -499,17 +755,20 @@ export async function call_purchasingCustomersInsightsLLM(productId: number) {
 
   
         ` +
-            "\n" +
-            userQueries +
-            userReviews +
-            ". Product Description: " +
-            productDescription,
+          "\n" +
+          userQueries +
+          userReviews +
+          ". Product Description: " +
+          productDescription,
       )
     ).content;
 
     console.log(userWideInsights);
-  
-    return { categories: response, userWideInsights : userWideInsights as string };
+
+    return {
+      categories: response,
+      userWideInsights: userWideInsights as string,
+    };
   } catch (err) {
     console.error("ERROR", err);
     return "ERROR";
