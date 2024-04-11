@@ -7,7 +7,7 @@ import {
   DataTable,
   Page,
   RangeSlider,
-  Tabs,
+  Tabs
 } from "@shopify/polaris";
 import { useCallback, useEffect, useState } from "react";
 import { getProducts } from "../backend/api_calls";
@@ -26,7 +26,7 @@ import {
   getAllUsers,
   updatePurchasedStatus
 } from "../backend/vectordb/helpers";
-import { Category, Query, Review, User } from "../globals";
+import { Category, Query, Review, ReviewPrompt, User } from "../globals";
 
 // trigger action to get reviews
 const initializeReviews = async (
@@ -106,7 +106,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   await initialize_agent();
   const reviewsHashmap = await initializeReviews(domain, false);
 
-  const {allUsersData, tableDataMap} = await getAllUsers();
+  const {allUsersData, tableDataMap, usersMap} = await getAllUsers();
 
   console.log("Loading products");
   const productData = await (await getProducts()).json();
@@ -115,7 +115,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     reviewsHashmap,
     productData,
     allUsersData,
-    tableDataMap
+    tableDataMap,
+    usersMap
   };
 };
 
@@ -134,7 +135,6 @@ export default function Index() {
 
   // Miscellanous
   var [selectedTab, setSelectedTab] = useState<number>(0);
-  var [isPopupOpen, setIsPopupOpen] = useState(false);
   const [sliderRangeValue, setsliderRangeValue] = useState(8);
 
   // Products
@@ -163,6 +163,10 @@ export default function Index() {
 
   // Followups
   var [reviewPromptData, setReviewPromptData] = useState<any[]>([]);
+  var [reviewPromptDataTest, setReviewPromptDataTest] = useState<ReviewPrompt[]>([]);
+  var [sentStatus, setSentStatus] = useState<boolean[]>([]);
+  var [categorySentStatus, setCategorySentStatus] = useState<boolean[]>([]);
+  // var [editedQuestions, setEditedQuestions] = useState<string[][]>([]);
 
   // Sellside Insights - Window Shoppers
   var [windowCategories, setWindowCategories] = useState<Category[]>([]);
@@ -341,39 +345,19 @@ export default function Index() {
     }
   };
 
-  const togglePopup = async () => {
-    setIsPopupOpen(!isPopupOpen);
-    try {
-      const response = await fetch("/prompts/getReviewPromptData", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      const data = await response.json();
-
-      // Handle the response from the API
-      setReviewPromptData(data?.reviewPromptData);
-    } catch (error) {
-      // Handle any errors
-      console.error(error);
-    }
-  };
-
-  const closePopup = () => {
-    setIsPopupOpen(false); // Close the popup
-    setReviewPromptData([]);
-  };
-
   const handleRangeSliderChange = useCallback(
     (value: number) => setsliderRangeValue(value),
     [],
   );
-
-  // PRODUCTS
-  // get products data on load
+  const handleQuestionChange = (reviewIndex: number, questionIndex: number, newValue: string) => {
+    const updatedQuestions = [...reviewPromptDataTest];
+    updatedQuestions[reviewIndex].questions[questionIndex] = newValue;
+    setReviewPromptDataTest(updatedQuestions);
+  };
   
+  const handleSend = (reviewIndex : number) => {
+    sentStatus[reviewIndex] = !sentStatus[reviewIndex]
+  };
 
   useEffect(() => {
     if (loaderData?.productData?.products?.length > 0) {
@@ -629,7 +613,7 @@ export default function Index() {
                   </div>
                   <br />
                   {purchasingCustomersCategories &&
-                    purchasingCustomersCategories.map((category) => (
+                    purchasingCustomersCategories.map((category, categoryIndex) => (
                       <Card>
                         {
                           <div key={category.category}>
@@ -691,8 +675,10 @@ export default function Index() {
 
                                   const data = await response.json();
                                   console.log(data);
-                                  // Handle the response from the API
-                                  setReviewPromptData(data.reviewPromptData);
+                                  setReviewPromptDataTest(data.reviewPromptData);
+                                  setSentStatus(Array(reviewPromptDataTest.length).fill(false))
+                                  setCategorySentStatus(Array(purchasingCustomersCategories.length).fill(true))
+                                  categorySentStatus[categoryIndex] = true;
                                 } catch (error) {
                                   // Handle any errors
                                   console.error(error);
@@ -702,7 +688,7 @@ export default function Index() {
                               Prompt Users
                             </Button>
                             <br />
-                            {reviewPromptData &&
+                            {categorySentStatus[categoryIndex] &&
                               reviewPromptData.map((prompt) => (
                                 <div>
                                   <p>
@@ -719,13 +705,39 @@ export default function Index() {
                 </>
               )}
               {selectedTab === 2 &&
-                reviewPromptData &&
-                reviewPromptData.map((review) => (
+                reviewPromptDataTest &&
+                (reviewPromptDataTest).map((reviewPrompt, reviewIndex) => (
                   <Card>
-                    <p> {review.userId} </p>
-                    <p> {review.reviewPrompt} </p>
+                      <div>
+                        <p><strong>UserID:</strong> {reviewPrompt.userId}</p>
+                        <p><strong>Name:</strong> {((reviewPrompt.userId in loaderData.usersMap) ? loaderData.usersMap[reviewPrompt.userId].name : "Error retrieveing name")}</p>
+                        <br />
+                        <p><strong>Questions:</strong></p>
+                        {reviewPrompt.questions.map((question, questionIndex) => (
+                          <input
+                            key={questionIndex}
+                            type="text"
+                            value={question}
+                            onChange={(e) =>
+                              handleQuestionChange(reviewIndex, questionIndex, e.target.value)
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              fontSize: '12px',
+                              border: '1px solid #ccc',
+                              borderRadius: '4px',
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <br />
+                      <Button>
+                        Send
+                      </Button>                   
                   </Card>
-                ))}
+                ))
+              }
               {selectedTab === 3 && (
                 <>
                   <input
@@ -921,14 +933,30 @@ export default function Index() {
                     <Card key={index}>
                       <div style={{ padding: '16px' }}>
                         <p><strong>User ID:</strong> {user.userId}</p>
-                        <p><strong>Name:</strong> {user.name}</p>
+                        {/* <p><strong>Name:</strong> {((user.userId in loaderData.usersMap) ? loaderData.usersMap[user.userId].name : "Error retrieveing name")}</p> */}
                       </div>
-                      <div style={{ padding: '16px' }}>
+                      <div style={{ padding: '16px', marginTop: '2px' }}>
                         <DataTable
                           columnContentTypes={['text', 'text', 'text']}
-                          headings={['Product ID', 'Queries', 'Reviews']}
-                          rows={loaderData.tableDataMap[user.userId]}
-                          // rows={[["a", "b", "c"], ["a2", "b2", "c2"]]}
+                          headings={['Product ID', 'Review IDs', 'Queries']}
+                          rows={loaderData.tableDataMap[user.userId].map((row) => ((
+                            [row[0],
+                            (
+                              <ul style={{ margin: 2, padding: 0 }}>
+                                {row[2].map((reviewId: string) => (
+                                  <p key={reviewId}>{reviewId}</p>
+                                ))}
+                              </ul>
+                            ),
+                            (
+                              <ul style={{ margin: 2, padding: 0 }}>
+                                {row[1].map((query: string) => (
+                                  <p key={query}>{query}</p>
+                                ))}
+                              </ul>
+                            )
+                            ] // Join reviews array with comma separator
+                          )))}
                         />
                       </div>
                     </Card>

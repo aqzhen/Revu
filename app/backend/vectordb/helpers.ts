@@ -527,12 +527,14 @@ export async function getAllUsers() {
   console.log(output[0])
 
   const tableDataMap: { [key: number]: any[][] } = {};
+  const usersMap: { [key: number]: User } = {};
   for (const user of output) {
     const tableData = generateTableData(user);
     tableDataMap[user.userId] = tableData;
+    usersMap[user.userId] = user;
   }
   
-  return {allUsersData: output, tableDataMap: tableDataMap}
+  return {allUsersData: output, tableDataMap: tableDataMap, usersMap: usersMap}
 }
 
 export async function getUser(
@@ -603,7 +605,7 @@ export function generateTableData(user: User): any[][] {
   const tableData: any[][] = [];
 
   const productIdSet = new Set<number>(); // Use a Set to keep track of unique productIds for the user
-  const productIdToQueriesMap: { [key: number]: string } = {}; // Map to store queries by productId
+  const productIdToQueriesMap: { [key: number]: string[] } = {}; // Map to store queries by productId
   const productIdToReviewIdsMap: { [key: number]: number[] } = {}; // Map to store reviewIds by productId
 
   // Process queries for the user
@@ -612,9 +614,9 @@ export function generateTableData(user: User): any[][] {
     productIdSet.add(productId!); // Add productId to the set of productIds for this user
 
     if (!productIdToQueriesMap[productId!]) {
-      productIdToQueriesMap[productId!] = '';
+      productIdToQueriesMap[productId!] = [];
     }
-    productIdToQueriesMap[productId!] += `Query ID: ${queryId}, Query: ${query.query}<br/>`;
+    productIdToQueriesMap[productId!].push(`${query.query}`);
   });
 
   // Process reviews for the user
@@ -630,10 +632,10 @@ export function generateTableData(user: User): any[][] {
 
   // Construct the rows for each productId
   productIdSet.forEach((productId) => {
-    const queriesString = productIdToQueriesMap[productId] || '';
-    const reviewIdsString = (productIdToReviewIdsMap[productId] || []).join(', ');
+    const queriesArray = productIdToQueriesMap[productId] || [];
+    const reviewIdsArray = productIdToReviewIdsMap[productId] || [];
 
-    tableData.push([productId, queriesString, reviewIdsString]);
+    tableData.push([productId, queriesArray, reviewIdsArray]);
   });
 
   console.log(tableData);
