@@ -23,12 +23,12 @@ import {
   createQueriesTable,
   createReviewTable,
   createSellerQueriesTable,
-  updatePurchasedStatus,
+  getAllUsers,
+  updatePurchasedStatus
 } from "../backend/vectordb/helpers";
-import { Category, Query, Review } from "../globals";
+import { Category, Query, Review, User } from "../globals";
 
 // trigger action to get reviews
-
 const initializeReviews = async (
   domain: string,
   pushReviews: boolean = false,
@@ -106,17 +106,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   await initialize_agent();
   const reviewsHashmap = await initializeReviews(domain, false);
 
+  const {allUsersData, tableDataMap} = await getAllUsers();
+
   console.log("Loading products");
   const productData = await (await getProducts()).json();
 
   return {
     reviewsHashmap,
     productData,
+    allUsersData,
+    tableDataMap
   };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {};
 
+// TODO: edit this function to highlight chunks within reviews
 function chunksToReviews(chunks: Chunk[]) {
   return chunks.map((chunk: Chunk, index: number) => (
     <Card key={index}>{chunks[index] && <p>{chunks[index].chunkBody}</p>}</Card>
@@ -124,6 +129,9 @@ function chunksToReviews(chunks: Chunk[]) {
 }
 
 export default function Index() {
+  // Loader Data
+  const loaderData = useLoaderData<typeof loader>();
+
   // Miscellanous
   var [selectedTab, setSelectedTab] = useState<number>(0);
   var [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -132,6 +140,9 @@ export default function Index() {
   // Products
   const [products, setProducts] = useState<any[]>([]);
   var [selectedProduct, setSelectedProduct] = useState<number>();
+
+  // Users
+  var [allUsersData, setAllUsersData] = useState<User[]>(loaderData.allUsersData);
 
   // Reviews
   var [reviewListDetails, setReviewListDetails] = useState<Review[]>([]); // used to store the entire list of reviews for a product
@@ -160,16 +171,10 @@ export default function Index() {
   var [windowKeywords, setWindowKeywords] = useState<string>("");
 
   // Sellside Insights - Purchasing Customers
-  var [purchasingCustomersInsights, setPurchasingCustomersInsights] =
-    useState<string>("");
-  var [purchasingCustomersQueries, setPurchasingCustomersQueries] = useState<
-    Query[]
-  >([]);
-  var [purchasingCustomersReviews, setPurchasingCustomersReviews] = useState<
-    Review[]
-  >([]);
-  var [purchasingCustomersCategories, setPurchasingCustomersCategories] =
-    useState<Category[]>([]);
+  var [purchasingCustomersInsights, setPurchasingCustomersInsights] = useState<string>("");
+  var [purchasingCustomersQueries, setPurchasingCustomersQueries] = useState<Query[]>([]);
+  var [purchasingCustomersReviews, setPurchasingCustomersReviews] = useState<Review[]>([]);
+  var [purchasingCustomersCategories, setPurchasingCustomersCategories] = useState<Category[]>([]);
 
   const nav = useNavigation();
   const isLoading =
@@ -178,6 +183,7 @@ export default function Index() {
     (selectedTabIndex: number) => setSelectedTab(selectedTabIndex),
     [],
   );
+
 
   const tabs = [
     {
@@ -206,7 +212,13 @@ export default function Index() {
       content: "Queries",
       panelID: "queries-content-1",
     },
+    {
+      id: "users-1",
+      content: "Users",
+      panelId: "users-content-1"
+    }
   ];
+
 
   // calling api to get reviews for returned reviews/chunks after a query
   const reviewIds: number[] = [];
@@ -249,6 +261,30 @@ export default function Index() {
 
       // Handle the response from the API
       setQueriesListDetails(data.queries);
+    } catch (error) {
+      // Handle any errors
+      console.error(error);
+    }
+  };
+
+  const initializeUsers = async () => {
+    const requestData = {};
+    try {
+      console.log("Fetching users");
+      const response = await fetch(`/queries/fetchAll`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+  
+      const data = await response.json();
+  
+      // Handle the response from the API
+      
+  
+      return null;
     } catch (error) {
       // Handle any errors
       console.error(error);
@@ -337,12 +373,12 @@ export default function Index() {
 
   // PRODUCTS
   // get products data on load
-  const productsData = useLoaderData<typeof loader>();
+  
 
   useEffect(() => {
-    if (productsData?.productData?.products?.length > 0) {
+    if (loaderData?.productData?.products?.length > 0) {
       setProducts(
-        productsData.productData.products.map((edge: any) => ({
+        loaderData.productData.products.map((edge: any) => ({
           id: edge?.node?.id,
           title: edge?.node?.title,
           imageUrl: edge?.node?.images?.edges?.[0]?.node?.url,
@@ -356,8 +392,8 @@ export default function Index() {
     var trimmed_id = productId.replace("gid://shopify/Product/", "");
     setSelectedProduct(Number(trimmed_id));
     initializeQueries(Number(trimmed_id));
-    console.log(productsData.reviewsHashmap);
-    const reviews = productsData?.reviewsHashmap ?? {};
+    console.log(loaderData.reviewsHashmap);
+    const reviews = loaderData?.reviewsHashmap ?? {};
     setReviewListDetails(reviews[Number(trimmed_id)]);
     console.log(reviews[Number(trimmed_id)]);
   };
@@ -879,6 +915,26 @@ export default function Index() {
                     ))}
                 </>
               )}
+              {selectedTab === 5 &&
+                allUsersData.map((user, index) => (
+                  <div>
+                    <Card key={index}>
+                      <div style={{ padding: '16px' }}>
+                        <p><strong>User ID:</strong> {user.userId}</p>
+                        <p><strong>Name:</strong> {user.name}</p>
+                      </div>
+                      <div style={{ padding: '16px' }}>
+                        <DataTable
+                          columnContentTypes={['text', 'text', 'text']}
+                          headings={['Product ID', 'Queries', 'Reviews']}
+                          rows={loaderData.tableDataMap[user.userId]}
+                          // rows={[["a", "b", "c"], ["a2", "b2", "c2"]]}
+                        />
+                      </div>
+                    </Card>
+                  </div>
+                ))
+              }
             </Card>
           </Tabs>
         </div>

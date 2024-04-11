@@ -1,5 +1,12 @@
 declare module "*.css";
 
+export type User = {
+  userId : number,
+  name : string,
+  queries : Query[],
+  reviews : Review[]
+}
+
 export type Review = {
   reviewerName: string;
   productId: number;
@@ -18,6 +25,7 @@ export type Query = {
   query: string;
   userId: number;
   semanticEmbedding?: string;
+  productId? : number
 };
 
 declare global {

@@ -1,9 +1,9 @@
 import fs from "fs";
 import mysql, { RowDataPacket } from "mysql2/promise";
 import OpenAI from "openai";
-import { Review, Query } from "../../globals";
-import { Chunk, chunk_string } from "../langchain/chunking";
+import { Query, Review, User } from "../../globals";
 import { getCustomerProductPurchases } from "../api_calls";
+import { Chunk, chunk_string } from "../langchain/chunking";
 
 let singleStoreConnection: mysql.Connection;
 export async function connectToSingleStore() {
@@ -497,6 +497,148 @@ export async function getProductQueries(
     console.error("ERROR", err);
     process.exit(1);
   }
+}
+
+export async function getAllUsers() {
+  const [response, bufff] = await singleStoreConnection.execute(
+    `
+      SELECT userId
+      FROM Queries
+    `
+  );
+  const userIds = new Set<number>();
+  for (const row of response as RowDataPacket[]) {
+    userIds.add(row.userId);
+  }
+  
+  const promises = [];
+  // Iterate through the set using for...of loop
+  for (const userId of userIds) {
+    console.log("generating for user", userId);
+    
+    // Await getUser(userId) within the loop
+    const response = await getUser(userId);
+    
+    // Push the resulting promise into the promises array
+    promises.push(response.user);
+  }
+
+  const output = await Promise.all(promises);
+  console.log(output[0])
+
+  const tableDataMap: { [key: number]: any[][] } = {};
+  for (const user of output) {
+    const tableData = generateTableData(user);
+    tableDataMap[user.userId] = tableData;
+  }
+  
+  return {allUsersData: output, tableDataMap: tableDataMap}
+}
+
+export async function getUser(
+  userId: number
+): Promise<{ user: User }> {
+  try {
+    const [results, buff] = await singleStoreConnection.execute(
+      `
+        SELECT Q.queryId, Q.query, Q.userId, Q.productId
+        FROM Queries Q
+        WHERE Q.userId = ${userId}
+      `
+    );
+    const queries: Query[] = [];
+    for (const row of results as RowDataPacket[]) {
+      const query: Query = {
+        queryId: row.queryId,
+        query: row.query,
+        userId: row.userId,
+        productId : row.productId
+      };
+      queries.push(query);
+    }
+
+    const [results2, buff2] = await singleStoreConnection.execute(
+      `
+        SELECT R.reviewerName, R.productId, R.reviewerExternalId, R.createdAt, R.updatedAt,
+                R.verified, R.reviewId, R.rating, R.title, R.body
+        FROM Review R
+        WHERE R.reviewerExternalId = ${userId}
+      `
+    );
+    const reviews: Review[] = [];
+    let userName = ""
+    for (const row of results2 as RowDataPacket[]) {
+      userName = row.reviewerName;
+      const review: Review = {
+        reviewerName : row.reviewerName,
+        productId : row.productId,
+        reviewerExternalId : row.reviewerExternalId,
+        createdAt : row.createdAt,
+        updatedAt : row.updatedAt,
+        verified : row.verified,
+        reviewId : row.reviewId,
+        rating : row.rating,
+        title : row.title,
+        body : row.body
+      };
+      reviews.push(review);
+    }
+
+    const user: User = {
+      userId : userId,
+      name : userName,
+      queries : queries,
+      reviews : reviews
+    }
+    // console.log(user)
+    // return { queries };
+    return { user: user }
+  } catch (err) {
+    console.error("ERROR", err);
+    process.exit(1);
+  }
+}
+
+export function generateTableData(user: User): any[][] {
+  const tableData: any[][] = [];
+
+  const productIdSet = new Set<number>(); // Use a Set to keep track of unique productIds for the user
+  const productIdToQueriesMap: { [key: number]: string } = {}; // Map to store queries by productId
+  const productIdToReviewIdsMap: { [key: number]: number[] } = {}; // Map to store reviewIds by productId
+
+  // Process queries for the user
+  user.queries.forEach((query) => {
+    const { productId, queryId } = query;
+    productIdSet.add(productId!); // Add productId to the set of productIds for this user
+
+    if (!productIdToQueriesMap[productId!]) {
+      productIdToQueriesMap[productId!] = '';
+    }
+    productIdToQueriesMap[productId!] += `Query ID: ${queryId}, Query: ${query.query}<br/>`;
+  });
+
+  // Process reviews for the user
+  user.reviews.forEach((review) => {
+    const { productId, reviewId } = review;
+    productIdSet.add(productId); // Add productId to the set of productIds for this user
+
+    if (!productIdToReviewIdsMap[productId]) {
+      productIdToReviewIdsMap[productId] = [];
+    }
+    productIdToReviewIdsMap[productId].push(reviewId);
+  });
+
+  // Construct the rows for each productId
+  productIdSet.forEach((productId) => {
+    const queriesString = productIdToQueriesMap[productId] || '';
+    const reviewIdsString = (productIdToReviewIdsMap[productId] || []).join(', ');
+
+    tableData.push([productId, queriesString, reviewIdsString]);
+  });
+
+  console.log(tableData);
+  return tableData;
+  // return [["a", "b", "c"], ["a2", "b2", "c2"]];
 }
 
 async function generateEmbedding(body: string) {
