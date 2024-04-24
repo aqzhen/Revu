@@ -363,7 +363,9 @@ export async function updatePurchasedStatus() {
     const userIds: number[] = [];
     const productIds: number[] = [];
     rows.forEach((row) => {
-      userIds.push(row.userId);
+      if (row.userId != 0) {
+        userIds.push(row.userId);
+      }
       productIds.push(row.productId);
     });
 

@@ -16,7 +16,8 @@ import {
   addSellerQueryToSingleStore,
 } from "../vectordb/helpers";
 import { prefix, suffix } from "./agentPrompt";
-import { call_LLM } from "./outputLLM";
+import { queryProductDescription } from "./queryProductDescriptionLLM";
+import { call_LLM } from "./queryReviewsLLM";
 
 let executor: AgentExecutor;
 const llm = new ChatOpenAI({
@@ -67,7 +68,7 @@ export async function initialize_agent() {
       agent: runnableAgent,
       tools,
       returnIntermediateSteps: true,
-      verbose: false,
+      verbose: true,
       // memory: memory,
     });
   } catch (err) {
@@ -93,6 +94,7 @@ export async function call_agent(
     // add query to queries table
     // TODO: figure out how to get queryID, productID
 
+    console.log("Adding query to single store...");
     let queryId;
     let sellerQueryId;
     if (!isSeller) {
@@ -112,7 +114,7 @@ export async function call_agent(
     }
 
     // TODO: Add semantic caching logic here
-
+    console.log("Calling agent...");
     let result;
     if (queryId !== undefined) {
       result = await executor.invoke({
@@ -137,7 +139,7 @@ export async function call_agent(
           query +
           "for productId " +
           productId,
-      });
+      }).catch((err) => { console.error(err); });
     }
 
     // TODO: Figure out if we can save tokens here by not returning all intermediate steps
@@ -161,8 +163,11 @@ export async function call_agent(
       query,
     );
 
+    const productDescriptionOutput = await queryProductDescription(llm, query, productId);
+    
     response.output = llmOutput as string;
     console.log(response.output);
+    console.log(productDescriptionOutput);
     return json(response);
   } catch (err) {
     console.error("ERROR", err);
