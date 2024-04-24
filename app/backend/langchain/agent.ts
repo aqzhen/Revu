@@ -89,6 +89,7 @@ export async function call_agent(
     result: [],
     error: "",
     output: "",
+    productDescriptionOutput: "",
   };
   try {
     // add query to queries table
@@ -166,6 +167,8 @@ export async function call_agent(
     const productDescriptionOutput = await queryProductDescription(llm, query, productId);
     
     response.output = llmOutput as string;
+    response.productDescriptionOutput = productDescriptionOutput.productDescriptionOutput;
+    
     console.log(response.output);
     console.log(productDescriptionOutput);
     return json(response);

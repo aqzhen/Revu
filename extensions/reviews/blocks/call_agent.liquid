@@ -4,6 +4,7 @@
     <div>
         <div id="firstDiv" style="border: 1px solid #ccc; padding: 10px; border-radius: 5px; margin-bottom: 10px; ">
             <p id="prompt"></p>
+            <p id="pd_output"></p>
             <p id="output"></p>
         </div>
         <div id="relevant-reviews">
@@ -35,7 +36,7 @@
             tempRelevantInnerHTML = relevantReviewsDiv.innerHTML;
             tempFirstInnerHTML = firstDiv.innerHTML;
             relevantReviewsDiv.innerHTML = ''; // Clear the contents of the relevant-reviews div
-            firstDiv.innerHTML = '<p id="prompt"></p><p id="output"></p>'; // Clear the contents of the firstDiv
+            firstDiv.innerHTML = '<p id="prompt"></p><p id="output"></p><p id="pd_output"></p>'; // Clear the contents of the firstDiv
             resizableContainer.style.height = 'fit-content';
             isMinimized = true;
         }
@@ -79,9 +80,7 @@
             const result = responseData.result;
             const error = responseData.error;
             const output = responseData.output;
-
-
-
+            const pd_output = responseData.productDescriptionOutput;
 
             const uniqueReviewIds = [...new Set(JSON.parse(result).map(item => item.reviewId))];
              
@@ -177,10 +176,12 @@
             // Pass the data to frontend
             const promptElement = document.querySelector('#prompt');
             const outputElement = document.querySelector('#output');
+            const productDescriptionOutputElement = document.querySelector('#pd_output');
             const relevantReviewsElement = document.querySelector('#relevant-reviews');
 
             promptElement.innerHTML = prompt;
             outputElement.innerHTML = output;
+            productDescriptionOutputElement.innerHTML = pd_output;
             relevantReviewsElement.innerHTML = relevantReviews;
         } else {
             console.error("API call failed with status:", response.status);
