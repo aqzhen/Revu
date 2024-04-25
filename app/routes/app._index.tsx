@@ -14,11 +14,13 @@ import { getProducts } from "../backend/api_calls";
 import { parseReviewsData } from "../metafield_parsers/judge";
 import { authenticate } from "../shopify.server";
 // import { addReviewsToDatabase } from "./backend/prisma/helpers";
+import { initializeCatalogSearchAgent } from "~/backend/langchain/catalogSearchAgent";
 import { initialize_agent } from "../backend/langchain/agent";
 import { Chunk } from "../backend/langchain/chunking";
 import {
   connectToSingleStore,
   createEmbeddingsTable,
+  createProductsTable,
   createPurchasesTable,
   createQueriesTable,
   createReviewTable,
@@ -100,10 +102,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   await createEmbeddingsTable(false);
   await createSellerQueriesTable(false);
   await createPurchasesTable(false);
+  await createProductsTable(false);
 
   await updatePurchasedStatus();
 
   await initialize_agent();
+  await initializeCatalogSearchAgent();
   const reviewsHashmap = await initializeReviews(domain, false);
 
   const {allUsersData, tableDataMap, usersMap} = await getAllUsers();

@@ -158,6 +158,27 @@ export async function createPurchasesTable(deleteExistingReviews: boolean) {
   }
 }
 
+export async function createProductsTable(deleteExistingReviews: boolean) {
+  try {
+    if (deleteExistingReviews) {
+      console.log("Dropping products table");
+
+      await singleStoreConnection.execute("DROP TABLE IF EXISTS Products");
+    }
+    await singleStoreConnection.execute(`
+                CREATE TABLE Products (
+                    productId BIGINT PRIMARY KEY,
+                    title TEXT,
+                    description TEXT,
+                    embedding VECTOR(768)
+                )
+            `);
+    console.log("Products table created successfully.");
+  } catch (err) {
+    console.log("Products table already exists");
+  }
+}
+
 // Adders
 export async function addChunksToSingleStore(reviews: Review[]): Promise<void> {
   for (const review of reviews) {
@@ -346,6 +367,36 @@ export async function addSellerQueryToSingleStore(
       console.log("Query added successfully.");
       return queryId;
     }
+  } catch (err) {
+    console.error("ERROR", err);
+    process.exit(1);
+  }
+}
+
+export async function insertProduct(
+  productId: number,
+  title: string,
+  description: string,
+): Promise<void> {
+  try {
+    const pdEmbedding = await generateEmbedding(description);
+    await singleStoreConnection.execute(
+      `
+      INSERT IGNORE INTO Products (
+          productId,
+          title,
+          description,
+          embedding
+      ) VALUES (
+          ${productId},
+          '${title.replace(/'/g, "\\'")}',
+          '${description.replace(/'/g, "\\'")}',
+          '${pdEmbedding}'
+      )
+    `,
+    );
+    console.log("Product added successfully.");
+    console.log(productId, title, description);
   } catch (err) {
     console.error("ERROR", err);
     process.exit(1);

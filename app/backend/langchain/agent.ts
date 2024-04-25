@@ -68,7 +68,7 @@ export async function initialize_agent() {
       agent: runnableAgent,
       tools,
       returnIntermediateSteps: true,
-      verbose: true,
+      verbose: false,
       // memory: memory,
     });
   } catch (err) {
